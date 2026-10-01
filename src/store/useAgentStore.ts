@@ -2,17 +2,25 @@ import { create } from 'zustand';
 import confetti from 'canvas-confetti';
 import type { AgentStatus, CameraPreset, DeveloperTask, SystemTelemetry, TaskArtifact, TaskLogEntry } from '../types/agent';
 import { TASK_PRESETS, type TaskPresetTemplate } from '../data/taskPresets';
+import type { JiraConfig, JiraStatus, JiraTicket } from '../types/jira';
+import { INITIAL_JIRA_TICKETS, JIRA_USERS } from '../data/jiraTickets';
 import { soundEngine } from '../services/audioEngine';
 
 interface AgentStoreState {
   agentStatus: AgentStatus;
+  robotEmotion: 'IDLE' | 'WORKING' | 'HAPPY' | 'WAVING' | 'ALERT';
   activeTask: DeveloperTask | null;
   taskHistory: DeveloperTask[];
   terminalLogs: TaskLogEntry[];
   activeArtifact: TaskArtifact | null;
   
+  // Jira State
+  jiraTickets: JiraTicket[];
+  jiraConfig: JiraConfig;
+  selectedTicket: JiraTicket | null;
+
   // UI & View State
-  activeDrawer: 'NONE' | 'TERMINAL' | 'ARTIFACT' | 'HISTORY' | 'KANBAN';
+  activeDrawer: 'NONE' | 'TERMINAL' | 'ARTIFACT' | 'HISTORY' | 'KANBAN' | 'JIRA';
   isCommandPaletteOpen: boolean;
   cameraPreset: CameraPreset;
 
@@ -31,20 +39,28 @@ interface AgentStoreState {
     isUnlocked: boolean;
   };
 
-  // Execution Timer reference
   executionIntervalId: number | null;
 
   // Actions
   dispatchPreset: (presetId: string) => void;
   dispatchCustomPrompt: (promptText: string) => void;
-  executeTaskPipeline: (preset: TaskPresetTemplate) => void;
+  executeTaskPipeline: (preset: TaskPresetTemplate, onDone?: () => void) => void;
   executeCustomTask: (customPrompt: string) => void;
   finishTaskSuccess: (artifact: TaskArtifact) => void;
   abortTask: () => void;
   setCameraPreset: (preset: CameraPreset) => void;
-  setActiveDrawer: (drawer: 'NONE' | 'TERMINAL' | 'ARTIFACT' | 'HISTORY' | 'KANBAN') => void;
+  setActiveDrawer: (drawer: 'NONE' | 'TERMINAL' | 'ARTIFACT' | 'HISTORY' | 'KANBAN' | 'JIRA') => void;
   setCommandPaletteOpen: (open: boolean) => void;
+  setRobotEmotion: (emotion: 'IDLE' | 'WORKING' | 'HAPPY' | 'WAVING' | 'ALERT') => void;
+  triggerRobotInteraction: () => void;
   
+  // Jira Actions
+  executeJiraTicket: (ticketId: string) => void;
+  updateJiraTicketStatus: (ticketId: string, status: JiraStatus) => void;
+  createJiraTicket: (ticket: Omit<JiraTicket, 'id' | 'key' | 'createdAt' | 'updatedAt' | 'comments'>) => void;
+  setSelectedTicket: (ticket: JiraTicket | null) => void;
+  syncJira: () => Promise<void>;
+
   // Audio Actions
   initAudio: () => Promise<void>;
   toggleBGM: () => void;
@@ -63,22 +79,34 @@ const INITIAL_LOGS: TaskLogEntry[] = [
     id: 'log-0',
     timestamp: '00:00:01',
     level: 'INFO',
-    message: 'Cyber-Operator v2.4 Online. Neural link synced. Workstation online.',
+    message: 'Cyber-Operator v2.5 Online. Neural link synced. Jira Sprint 34 connected.',
   },
   {
     id: 'log-1',
     timestamp: '00:00:02',
     level: 'SUCCESS',
-    message: 'Cluster node 10.14.0.8 connected. Three.js isometric viewport ready.',
+    message: 'Jira workspace synchronized: 6 tickets loaded. Autonomous delegation engine standing by.',
   },
 ];
 
 export const useAgentStore = create<AgentStoreState>((set, get) => ({
   agentStatus: 'IDLE',
+  robotEmotion: 'IDLE',
   activeTask: null,
   taskHistory: [],
   terminalLogs: INITIAL_LOGS,
-  activeArtifact: TASK_PRESETS[0].artifact, // Preview default artifact
+  activeArtifact: TASK_PRESETS[0].artifact,
+  
+  jiraTickets: INITIAL_JIRA_TICKETS,
+  jiraConfig: {
+    domain: 'huni-technologies.atlassian.net',
+    projectKey: 'TECH',
+    isConnected: true,
+    isSyncing: false,
+    activeSprint: 'Sprint 34 // Core Hardening',
+  },
+  selectedTicket: INITIAL_JIRA_TICKETS[0],
+
   activeDrawer: 'NONE',
   isCommandPaletteOpen: false,
   cameraPreset: 'ISOMETRIC',
@@ -87,11 +115,11 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     cpuUsage: 14,
     memoryUsage: 32,
     tokensPerSec: 0,
-    neuralSync: 98.4,
+    neuralSync: 98.8,
     activeModel: 'DeepSeek Coder V2 (MoE 236B)',
   },
   monitorLogStream: [
-    'SYSTEM READY',
+    'JIRA SPRINT 34 SYNCED',
     'AWAITING DISPATCH',
     'ISOMETRIC RENDER: 60 FPS',
   ],
@@ -177,7 +205,6 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
   setActiveDrawer: (drawer) => {
     soundEngine.playClick();
-    // Muffle audio when viewing full-page drawer overlays
     soundEngine.setMuffled(drawer !== 'NONE');
     set({ activeDrawer: drawer });
   },
@@ -186,6 +213,212 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     soundEngine.playClick();
     soundEngine.setMuffled(open || get().activeDrawer !== 'NONE');
     set({ isCommandPaletteOpen: open });
+  },
+
+  setRobotEmotion: (emotion) => {
+    set({ robotEmotion: emotion });
+  },
+
+  triggerRobotInteraction: () => {
+    soundEngine.playClick();
+    set({ robotEmotion: 'WAVING' });
+    setTimeout(() => {
+      set({ robotEmotion: get().agentStatus === 'PROCESSING' ? 'WORKING' : 'IDLE' });
+    }, 2800);
+  },
+
+  setSelectedTicket: (ticket) => {
+    set({ selectedTicket: ticket });
+  },
+
+  updateJiraTicketStatus: (ticketId: string, status: JiraStatus) => {
+    soundEngine.playClick();
+    set((state) => ({
+      jiraTickets: state.jiraTickets.map((t) =>
+        t.id === ticketId
+          ? {
+              ...t,
+              status,
+              updatedAt: new Date().toLocaleTimeString(),
+            }
+          : t
+      ),
+    }));
+  },
+
+  createJiraTicket: (ticketData) => {
+    soundEngine.playDispatch();
+    const newId = `TECH-${200 + get().jiraTickets.length + 10}`;
+    const newTicket: JiraTicket = {
+      ...ticketData,
+      id: newId,
+      key: newId,
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      comments: [],
+    };
+
+    set((state) => ({
+      jiraTickets: [newTicket, ...state.jiraTickets],
+      selectedTicket: newTicket,
+    }));
+  },
+
+  syncJira: async () => {
+    soundEngine.playClick();
+    set((state) => ({
+      jiraConfig: { ...state.jiraConfig, isSyncing: true },
+    }));
+
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    soundEngine.playSuccessChime();
+
+    set((state) => ({
+      jiraConfig: {
+        ...state.jiraConfig,
+        isSyncing: false,
+        lastSyncedAt: Date.now(),
+      },
+      terminalLogs: [
+        ...state.terminalLogs,
+        {
+          id: `log-${Date.now()}-sync`,
+          timestamp: new Date().toLocaleTimeString(),
+          level: 'SUCCESS',
+          message: `Jira Board synced with ${state.jiraConfig.domain} // Sprint 34 active.`,
+        },
+      ],
+    }));
+  },
+
+  // Jira Ticket AI Execution Engine
+  executeJiraTicket: (ticketId: string) => {
+    const ticket = get().jiraTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+
+    // Move to IN_PROGRESS and assign to AI Agent
+    set((state) => ({
+      jiraTickets: state.jiraTickets.map((t) =>
+        t.id === ticketId
+          ? {
+              ...t,
+              status: 'IN_PROGRESS',
+              assignee: JIRA_USERS.aiAgent,
+              updatedAt: new Date().toLocaleTimeString(),
+            }
+          : t
+      ),
+    }));
+
+    // Synthesize task preset from Jira Ticket
+    const jiraPreset: TaskPresetTemplate = {
+      id: `jira-task-${ticket.id}`,
+      title: `[${ticket.key}] ${ticket.title}`,
+      category: ticket.issueType === 'Bug' ? 'TESTING' : ticket.labels.includes('database') ? 'DATABASE' : ticket.labels.includes('frontend') ? 'FRONTEND' : 'API',
+      description: ticket.description,
+      targetStack: ticket.labels,
+      priority: ticket.priority === 'Highest' ? 'CRITICAL' : ticket.priority === 'High' ? 'HIGH' : 'NORMAL',
+      estimatedDurationSeconds: Math.max(6, Math.min(10, ticket.storyPoints * 1.5)),
+      steps: [
+        `Ingesting Jira ACs for ${ticket.key} & checking out branch ${ticket.branchName}`,
+        'Synthesizing implementation code & type validation',
+        'Running Vitest assertions & automated security checks',
+        `Generating Pull Request & transitioning Jira ticket to DONE`,
+      ],
+      mockLogs: [
+        { stepIndex: 0, level: 'STEP', text: `JIRA WEBHOOK: Received ${ticket.key} (${ticket.storyPoints} pts)` },
+        { stepIndex: 0, level: 'INFO', text: `git checkout -b ${ticket.branchName}` },
+        { stepIndex: 1, level: 'EXEC', text: `Implementing Acceptance Criteria (0/${ticket.acceptanceCriteria.length} satisfied)` },
+        { stepIndex: 1, level: 'INFO', text: `Generating code and validating strict TypeScript contracts...` },
+        { stepIndex: 2, level: 'EXEC', text: `RUN vitest --run --coverage (All test suites passed)` },
+        { stepIndex: 3, level: 'SUCCESS', text: `All ${ticket.acceptanceCriteria.length} Acceptance Criteria verified. PR created.` },
+      ],
+      artifact: {
+        title: `Resolution for ${ticket.key}: ${ticket.title}`,
+        summary: `Automated implementation satisfying all ${ticket.acceptanceCriteria.length} acceptance criteria for Jira ticket ${ticket.key}.`,
+        fileName: `${ticket.key.toLowerCase()}-resolution.ts`,
+        language: 'typescript',
+        stats: {
+          lines: 84 + ticket.storyPoints * 12,
+          coverage: '98.5%',
+          securityScore: '100% Passed (OWASP Compliance)',
+          durationSeconds: Math.max(6, Math.min(10, ticket.storyPoints * 1.5)),
+        },
+        code: `// ====================================================================
+// JIRA TICKET: ${ticket.key} - ${ticket.title}
+// ASSIGNEE: ${JIRA_USERS.aiAgent.name}
+// SPRINT: ${ticket.sprint}
+// BRANCH: ${ticket.branchName}
+// ====================================================================
+
+import crypto from 'node:crypto';
+
+/**
+ * Acceptance Criteria Implementation:
+${ticket.acceptanceCriteria.map((ac, i) => ` * [x] ${i + 1}. ${ac}`).join('\n')}
+ */
+
+export interface TicketResolutionContext {
+  ticketKey: string;
+  timestamp: string;
+  executor: string;
+  branch: string;
+}
+
+export async function executeJiraResolution(ctx: TicketResolutionContext) {
+  console.log(\`[Cyber-Operator] Executing verified fix for: \${ctx.ticketKey}\`);
+
+  // Constant-time timingSafeEqual validation for cryptographic safety
+  const safeCompare = (a: string, b: string): boolean => {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  };
+
+  return {
+    status: 'RESOLVED',
+    jiraTicket: ctx.ticketKey,
+    branch: ctx.branch,
+    timestamp: new Date().toISOString(),
+    testsPassed: 48,
+    coverage: '98.5%',
+  };
+}`,
+      },
+    };
+
+    get().executeTaskPipeline(jiraPreset, () => {
+      // Upon completion: Mark Jira ticket as DONE, attach PR & comment
+      set((state) => ({
+        jiraTickets: state.jiraTickets.map((t) =>
+          t.id === ticketId
+            ? {
+                ...t,
+                status: 'DONE',
+                updatedAt: new Date().toLocaleTimeString(),
+                resolutionSummary: `Resolved automatically by AI Agent. All ${t.acceptanceCriteria.length} ACs fulfilled with full test pass.`,
+                pullRequest: {
+                  branch: t.branchName,
+                  commits: 2,
+                  filesChanged: 3,
+                  checksPassed: true,
+                  prUrl: `https://github.com/huni-enterprise/core-repo/pull/${Math.floor(100 + Math.random() * 900)}`,
+                },
+                comments: [
+                  ...t.comments,
+                  {
+                    id: `c-${Date.now()}`,
+                    author: JIRA_USERS.aiAgent,
+                    timestamp: new Date().toLocaleTimeString(),
+                    content: `Ticket ${t.key} resolved automatically by Cyber-Operator 3D AI Agent. Pull Request submitted with 100% test coverage.`,
+                  },
+                ],
+              }
+            : t
+        ),
+      }));
+    });
   },
 
   updateTelemetryModel: (modelName: string) => {
@@ -210,7 +443,6 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const cleanPrompt = promptText.trim();
     if (!cleanPrompt) return;
 
-    // Check if it's a CLI command
     if (cleanPrompt.startsWith('/')) {
       const [cmd, ...args] = cleanPrompt.split(' ');
       if (cmd === '/clear') {
@@ -219,6 +451,10 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       }
       if (cmd === '/abort') {
         get().abortTask();
+        return;
+      }
+      if (cmd === '/jira') {
+        get().setActiveDrawer('JIRA');
         return;
       }
       if (cmd === '/status') {
@@ -249,7 +485,6 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       }
     }
 
-    // Freeform prompt
     get().executeCustomTask(cleanPrompt);
   },
 
@@ -270,6 +505,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
     set({
       agentStatus: 'ERROR',
+      robotEmotion: 'ALERT',
       executionIntervalId: null,
       terminalLogs: [...get().terminalLogs, abortLog],
       monitorLogStream: ['TASK ABORTED', 'OPERATOR OVERRIDE', 'AGENT STANDBY'],
@@ -283,16 +519,14 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       },
     });
 
-    // Reset to IDLE after 2.5 seconds
     window.setTimeout(() => {
       if (get().agentStatus === 'ERROR') {
-        set({ agentStatus: 'IDLE' });
+        set({ agentStatus: 'IDLE', robotEmotion: 'IDLE' });
       }
     }, 2500);
   },
 
-  // Internal Execution Pipeline
-  executeTaskPipeline: (preset: TaskPresetTemplate) => {
+  executeTaskPipeline: (preset: TaskPresetTemplate, onDone?: () => void) => {
     const { executionIntervalId } = get();
     if (executionIntervalId) {
       window.clearInterval(executionIntervalId);
@@ -325,6 +559,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
     set({
       agentStatus: 'PROCESSING',
+      robotEmotion: 'WORKING',
       activeTask: task,
       terminalLogs: [...get().terminalLogs, initialDispatchLog],
       monitorLogStream: [
@@ -340,7 +575,6 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       },
     });
 
-    // Run execution simulation
     const totalDurationMs = preset.estimatedDurationSeconds * 1000;
     const intervalTickMs = 200;
     let elapsedMs = 0;
@@ -354,12 +588,10 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
         Math.floor((progress / 100) * preset.steps.length)
       );
 
-      // Play typing click intermittently
       if (Math.random() > 0.4) {
         soundEngine.playTypingKey();
       }
 
-      // Check if new mock log should be posted
       const newLogs = [...get().terminalLogs];
       let monitorStream = [...get().monitorLogStream];
       if (logCounter < preset.mockLogs.length) {
@@ -394,10 +626,10 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           : null,
       }));
 
-      // Task Completion
       if (progress >= 100) {
         window.clearInterval(intervalId);
         get().finishTaskSuccess(preset.artifact);
+        if (onDone) onDone();
       }
     }, intervalTickMs);
 
@@ -448,21 +680,15 @@ export interface TaskContext {
   environment: 'production' | 'staging';
 }
 
-/**
- * High-performance, memory-efficient implementation for:
- * "${customPrompt}"
- */
 export async function executeOperation(context: TaskContext): Promise<{ success: boolean; data: unknown }> {
   const startTime = performance.now();
   console.log(\`[Cyber-Operator] Executing: \${context.prompt}\`);
 
   try {
-    // 1. Validate inputs and concurrency safety
     if (!context.prompt) {
       throw new Error('Invalid prompt context provided');
     }
 
-    // 2. Perform target operation with error boundaries
     const result = {
       status: 'COMPLETED',
       executionTimeMs: performance.now() - startTime,
@@ -488,12 +714,11 @@ export async function executeOperation(context: TaskContext): Promise<{ success:
   finishTaskSuccess: (artifact: TaskArtifact) => {
     soundEngine.playSuccessChime();
 
-    // Trigger visual celebratory confetti explosion!
     try {
       confetti({
-        particleCount: 85,
-        spread: 70,
-        origin: { y: 0.7 },
+        particleCount: 95,
+        spread: 80,
+        origin: { y: 0.65 },
         colors: ['#06b6d4', '#ec4899', '#10b981', '#38bdf8', '#a855f7'],
       });
     } catch {
@@ -521,13 +746,14 @@ export async function executeOperation(context: TaskContext): Promise<{ success:
 
     set((state) => ({
       agentStatus: 'COMPLETED',
+      robotEmotion: 'HAPPY',
       executionIntervalId: null,
       activeArtifact: artifact,
       terminalLogs: [...state.terminalLogs, finalLog],
       monitorLogStream: [
         'TASK DELIVERED 100%',
         'ALL TESTS PASSED',
-        'ARTIFACT READY',
+        'JIRA STATUS: DONE',
       ],
       activeTask: finishedTask,
       taskHistory: finishedTask ? [finishedTask, ...state.taskHistory] : state.taskHistory,
@@ -539,11 +765,11 @@ export async function executeOperation(context: TaskContext): Promise<{ success:
       },
     }));
 
-    // Return to IDLE after celebration duration
     window.setTimeout(() => {
       if (get().agentStatus === 'COMPLETED') {
         set({
           agentStatus: 'IDLE',
+          robotEmotion: 'IDLE',
           monitorLogStream: [
             'IDLE // AWAITING DISPATCH',
             'SYSTEM TELEMETRY NOMINAL',

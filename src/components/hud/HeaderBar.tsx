@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAgentStore } from '../../store/useAgentStore';
 import {
   Activity,
+  Bookmark,
   Bot,
   ChevronDown,
   FileCode,
@@ -21,6 +22,7 @@ export const HeaderBar: React.FC = () => {
   const updateTelemetryModel = useAgentStore((state) => state.updateTelemetryModel);
   const activeDrawer = useAgentStore((state) => state.activeDrawer);
   const setActiveDrawer = useAgentStore((state) => state.setActiveDrawer);
+  const jiraTickets = useAgentStore((state) => state.jiraTickets);
 
   // Audio store state
   const audioSettings = useAgentStore((state) => state.audioSettings);
@@ -269,6 +271,23 @@ export const HeaderBar: React.FC = () => {
 
         {/* Drawer Quick Action Buttons */}
         <div className="flex items-center gap-1.5">
+          {/* Jira Board Toggle */}
+          <button
+            onClick={() => setActiveDrawer(activeDrawer === 'JIRA' ? 'NONE' : 'JIRA')}
+            title="Open Atlassian Jira Sprint Board"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all ${
+              activeDrawer === 'JIRA'
+                ? 'border-cyan-400 bg-cyan-500/25 text-cyan-200 shadow-lg shadow-cyan-500/20'
+                : 'border-slate-800/80 bg-slate-900/60 text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Bookmark className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="hidden sm:inline font-bold">Jira</span>
+            <span className="rounded-full bg-cyan-950/80 px-1.5 py-0.2 text-[10px] text-cyan-300 border border-cyan-800/60">
+              {jiraTickets.filter((t) => t.status === 'DONE').length}/{jiraTickets.length}
+            </span>
+          </button>
+
           {/* Terminal Drawer Toggle */}
           <button
             onClick={() => setActiveDrawer(activeDrawer === 'TERMINAL' ? 'NONE' : 'TERMINAL')}

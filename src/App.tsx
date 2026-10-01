@@ -5,6 +5,7 @@ import { CommandDock } from './components/task/CommandDock';
 import { TerminalDrawer } from './components/modals/TerminalDrawer';
 import { ArtifactDrawer } from './components/modals/ArtifactDrawer';
 import { KanbanDrawer } from './components/modals/KanbanDrawer';
+import { JiraDrawer } from './components/modals/JiraDrawer';
 import { useAgentStore } from './store/useAgentStore';
 import { Volume2 } from 'lucide-react';
 
@@ -63,6 +64,7 @@ export const App: React.FC = () => {
       </div>
 
       {/* Slide-over Drawers */}
+      <JiraDrawer />
       <TerminalDrawer />
       <ArtifactDrawer />
       <KanbanDrawer />

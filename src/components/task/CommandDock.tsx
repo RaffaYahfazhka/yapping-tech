@@ -124,6 +124,18 @@ export const CommandDock: React.FC = () => {
             <span>PRESETS:</span>
           </div>
 
+          {/* Quick Jira Sprint Backlog Shortcut */}
+          <button
+            onClick={() => setActiveDrawer('JIRA')}
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-cyan-500/50 bg-cyan-950/40 px-3 py-1.5 text-xs text-cyan-300 transition-all hover:bg-cyan-500/20 hover:text-white group shadow-md shadow-cyan-500/10"
+          >
+            <Zap className="h-3.5 w-3.5 text-cyan-400 animate-pulse" />
+            <span className="font-bold">Jira Sprint 34</span>
+            <span className="text-[10px] font-mono bg-cyan-900/60 px-1.5 py-0.2 rounded text-cyan-200">
+              6 Issues
+            </span>
+          </button>
+
           {TASK_PRESETS.map((preset) => (
             <button
               key={preset.id}
