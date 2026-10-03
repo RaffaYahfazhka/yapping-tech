@@ -59,14 +59,19 @@ export default function OfficePage() {
   const [figmaStrict, setFigmaStrict] = useState(true);
   const [figmaParseResult, setFigmaParseResult] = useState(null);
 
+  // Theme State: 'light' or 'dark' (Defaulting to modern Light Studio theme)
+  const [theme, setTheme] = useState('light');
+
   // Live Jira Cloud & Ticket Selection State
   const [useLiveJira, setUseLiveJira] = useState(true);
   const [liveTickets, setLiveTickets] = useState([]);
   const [jiraLoading, setJiraLoading] = useState(false);
   const [jiraError, setJiraError] = useState(null);
   const [selectedRepoId, setSelectedRepoId] = useState(REPOS[0]?.id || 'frontend-dashboard-v2');
+  const [customRepoPath, setCustomRepoPath] = useState('/Users/raffayahfazhka/Downloads/master/yapping-techflow');
   const [selectedTicketKey, setSelectedTicketKey] = useState(TICKETS[0]?.key || '');
   const [ticketTypeFilter, setTicketTypeFilter] = useState('all');
+  const [ticketStatusFilter, setTicketStatusFilter] = useState('active'); // 'all' | 'active' (todo - ready prod) | 'To Do' | 'In Progress' | 'QA' | 'Ready Prod'
   const [ticketSearch, setTicketSearch] = useState('');
 
   // Fetch live Jira tickets from /api/jira/tickets
@@ -297,22 +302,43 @@ export default function OfficePage() {
     if (pipelineRef.current) pipelineRef.current.setSpeed(nextSpeed);
   };
 
+  // Apply theme to DOM and 3D scene
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (sceneRef.current) {
+      sceneRef.current.setTheme(theme === 'light');
+    }
+  }, [theme]);
+
   // Filtered tickets (switches between live Jira Cloud and mock presets)
   const ticketPool = (useLiveJira && liveTickets.length > 0) ? liveTickets : TICKETS;
+
+  // Active status set: from 'To Do' up to 'Ready Prod'
+  const ACTIVE_STATUS_KEYWORDS = ['to do', 'in progress', 'qa', 'qa list', 'ready prod', 'backlog'];
 
   const filteredTickets = ticketPool.filter((t) => {
     const matchRepo = useLiveJira ? true : t.repo === selectedRepoId;
     const matchType = ticketTypeFilter === 'all' || t.type === ticketTypeFilter;
+
+    const tStatus = (t.status || '').toLowerCase();
+    let matchStatus = true;
+    if (ticketStatusFilter === 'active') {
+      // Todo sampai Ready Prod (exclude terminal Done / PROD Deployment unless explicitly clicked)
+      matchStatus = ACTIVE_STATUS_KEYWORDS.some((kw) => tStatus.includes(kw));
+    } else if (ticketStatusFilter !== 'all') {
+      matchStatus = tStatus.includes(ticketStatusFilter.toLowerCase());
+    }
+
     const matchSearch =
       !ticketSearch ||
       t.key.toLowerCase().includes(ticketSearch.toLowerCase()) ||
       t.summary.toLowerCase().includes(ticketSearch.toLowerCase());
-    return matchRepo && matchType && matchSearch;
+    return matchRepo && matchType && matchStatus && matchSearch;
   });
 
   const activeTicket = ticketPool.find((t) => t.key === selectedTicketKey) || filteredTickets[0];
 
-  // Run Jira Pipeline with live ticket payload
+  // Run Jira Pipeline with live ticket payload and selected project directory
   const handleExecuteJira = () => {
     setIsMissionOpen(false);
     setIsTerminalOpen(true);
@@ -324,6 +350,7 @@ export default function OfficePage() {
       ticketKey: activeTicket?.key,
       ticket: activeTicket,
       repoId: selectedRepoId,
+      projectPath: customRepoPath,
     });
   };
 
@@ -409,6 +436,15 @@ export default function OfficePage() {
               />
             </svg>
             Terminal <kbd>T</kbd>
+          </button>
+          <button
+            id="btn-theme"
+            className="btn btn-ghost"
+            type="button"
+            title="Ganti Tema (Terang / Gelap)"
+            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+          >
+            {theme === 'light' ? '☀️ Terang' : '🌙 Gelap'}
           </button>
           <button
             id="btn-help"
@@ -842,80 +878,124 @@ export default function OfficePage() {
             </div>
 
             <div className="mission-grid">
-              {/* Column 1: Repositories */}
+              {/* Column 1: Repositories & Execution Folder */}
               <section className="mission-col">
                 <h3 className="col-title">
-                  <span className="step-no">1</span> GitLab Repository
+                  <span className="step-no">1</span> Target Repo / Folder
                 </h3>
-                <div className="flex flex-col gap-2">
-                  {REPOS.map((repo) => (
-                    <div
-                      key={repo.id}
-                      className={`repo-card ${selectedRepoId === repo.id ? 'active' : ''}`}
-                      onClick={() => {
-                        setSelectedRepoId(repo.id);
-                        const firstTicket = TICKETS.find((t) => t.repo === repo.id);
-                        if (firstTicket) setSelectedTicketKey(firstTicket.key);
-                      }}
-                    >
-                      <div className="repo-name">{repo.id}</div>
-                      <div className="repo-sub mono">
-                        {repo.group} · {repo.lang}
+                <div className="flex flex-col gap-1.5">
+                  <span className="field-label text-[11px]">Direktori Target Eksekusi (Folder Lokal):</span>
+                  <input
+                    className="input mono text-xs"
+                    value={customRepoPath}
+                    onChange={(e) => setCustomRepoPath(e.target.value)}
+                    placeholder="/path/to/your/project"
+                    title="Folder lokal yang akan dieksekusi"
+                  />
+                  <small className="mono text-[10px] text-emerald-500 font-semibold">
+                    ✓ Folder target aktif untuk Antigravity
+                  </small>
+                </div>
+
+                <div className="mt-2">
+                  <span className="field-label text-[11px] mb-1.5 block">Preset GitLab Project:</span>
+                  <div className="flex flex-col gap-2">
+                    {REPOS.map((repo) => (
+                      <div
+                        key={repo.id}
+                        className={`repo-card ${selectedRepoId === repo.id ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedRepoId(repo.id);
+                          const firstTicket = TICKETS.find((t) => t.repo === repo.id);
+                          if (firstTicket) setSelectedTicketKey(firstTicket.key);
+                        }}
+                      >
+                        <div className="repo-name">{repo.id}</div>
+                        <div className="repo-sub mono">
+                          {repo.group} · {repo.lang}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </section>
 
-              {/* Column 2: Tickets */}
+              {/* Column 2: Tickets with Status Range Filter */}
               <section className="mission-col">
-                <div className="flex items-center justify-between gap-1 mb-2">
+                <div className="flex items-center justify-between gap-1 mb-1">
                   <h3 className="col-title m-0">
                     <span className="step-no">2</span> Tiket Jira ({filteredTickets.length})
                   </h3>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className={`chip mono text-[10px] ${useLiveJira ? 'active' : ''}`}
-                      onClick={() => setUseLiveJira((prev) => !prev)}
-                      title={useLiveJira ? 'Terhubung ke Jira Cloud: etbteam.atlassian.net' : 'Menggunakan preset simulasi mock'}
-                    >
-                      {useLiveJira ? '🟢 etbteam.atlassian.net' : '⚪ Mock Presets'}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className={`chip mono text-[10px] ${useLiveJira ? 'active' : ''}`}
+                    onClick={() => setUseLiveJira((prev) => !prev)}
+                    title={useLiveJira ? 'Terhubung ke Jira Cloud: etbteam.atlassian.net' : 'Menggunakan preset simulasi mock'}
+                  >
+                    {useLiveJira ? '🟢 etbteam.atlassian.net' : '⚪ Mock Presets'}
+                  </button>
                 </div>
+
                 {jiraLoading && (
-                  <div className="text-[11px] text-zinc-400 mono italic animate-pulse mb-1">
+                  <div className="text-[11px] text-zinc-500 mono italic animate-pulse">
                     ⏳ Memuat tiket live dari Jira Cloud...
                   </div>
                 )}
                 {jiraError && useLiveJira && (
-                  <div className="text-[10px] text-rose-400 mono mb-1">
+                  <div className="text-[10px] text-rose-500 mono">
                     ⚠️ {jiraError} (Beralih ke fallback)
                   </div>
                 )}
+
                 <input
                   className="input text-xs"
                   placeholder="Cari key / summary..."
                   value={ticketSearch}
                   onChange={(e) => setTicketSearch(e.target.value)}
                 />
+
+                {/* Status Range Filter (Todo -> Ready Prod) */}
+                <div className="flex flex-col gap-1">
+                  <span className="field-label text-[10px] uppercase font-bold text-zinc-500">Filter Status:</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {[
+                      { id: 'active', label: '⚡ To Do ➔ Ready Prod' },
+                      { id: 'To Do', label: 'To Do' },
+                      { id: 'In Progress', label: 'In Progress' },
+                      { id: 'QA', label: 'QA' },
+                      { id: 'Ready Prod', label: 'Ready Prod' },
+                      { id: 'all', label: 'Semua Status' },
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        className={`chip text-[10px] ${ticketStatusFilter === st.id ? 'active' : ''}`}
+                        onClick={() => setTicketStatusFilter(st.id)}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Issue Type Filter */}
                 <div className="flex gap-1">
                   {['all', 'Story', 'Bug', 'Task'].map((type) => (
                     <button
                       key={type}
                       type="button"
-                      className={`chip ${ticketTypeFilter === type ? 'active' : ''}`}
+                      className={`chip text-[10px] ${ticketTypeFilter === type ? 'active' : ''}`}
                       onClick={() => setTicketTypeFilter(type)}
                     >
-                      {type === 'all' ? 'Semua' : type}
+                      {type === 'all' ? 'Semua Tipe' : type}
                     </button>
                   ))}
                 </div>
-                <div className="flex flex-col gap-2 overflow-y-auto">
+
+                <div className="flex flex-col gap-2 overflow-y-auto pr-1">
                   {filteredTickets.map((t) => {
-                    const typeMeta = TYPE_META[t.type] || { color: '#fff', icon: '•' };
-                    const priorityMeta = PRIORITY_META[t.priority] || { color: '#fff', icon: '-' };
+                    const typeMeta = TYPE_META[t.type] || { color: 'var(--text-primary)', icon: '•' };
+                    const priorityMeta = PRIORITY_META[t.priority] || { color: 'var(--text-primary)', icon: '-' };
                     return (
                       <div
                         key={t.key}
@@ -931,7 +1011,7 @@ export default function OfficePage() {
                         <div className="ticket-summary">{t.summary}</div>
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           {t.projectKey && (
-                            <span className="chip mono text-[9px] bg-zinc-800 text-indigo-300 border-zinc-700">
+                            <span className="chip mono text-[9px]">
                               {t.projectKey}
                             </span>
                           )}
@@ -939,8 +1019,13 @@ export default function OfficePage() {
                             {typeMeta.icon} {t.type}
                           </span>
                           {t.status && (
-                            <span className={`chip mono text-[9px] ${t.status === 'In Progress' ? 'text-amber-300' : t.status === 'Ready Prod' || t.status === 'Done' ? 'text-emerald-300' : 'text-zinc-400'}`}>
+                            <span className={`chip mono text-[9px] ${t.status === 'In Progress' ? 'text-amber-500 font-bold' : t.status === 'Ready Prod' || t.status === 'Done' ? 'text-emerald-500 font-bold' : ''}`}>
                               ● {t.status}
+                            </span>
+                          )}
+                          {t.figmaUrl && (
+                            <span className="chip text-[9px] text-purple-500 font-bold">
+                              🎨 Figma
                             </span>
                           )}
                           <span className="text-[10px] text-zinc-500 mono ml-auto">{t.points} pts</span>
@@ -948,28 +1033,61 @@ export default function OfficePage() {
                       </div>
                     );
                   })}
+                  {filteredTickets.length === 0 && (
+                    <div className="text-zinc-500 italic text-xs py-4 text-center">
+                      Tidak ada tiket yang cocok dengan filter status/pencarian.
+                    </div>
+                  )}
                 </div>
               </section>
 
-              {/* Column 3: Ticket Detail & Acceptance Criteria */}
+              {/* Column 3: Ticket Detail, Figma Link, & Acceptance Criteria */}
               <section className="mission-col">
                 <h3 className="col-title">
-                  <span className="step-no">3</span> Detail Spesifikasi
+                  <span className="step-no">3</span> Detail Spesifikasi &amp; Figma
                 </h3>
                 {activeTicket ? (
-                  <div className="flex flex-col gap-4 text-xs">
+                  <div className="flex flex-col gap-3 text-xs overflow-y-auto pr-1">
                     <div>
-                      <div className="text-base font-bold text-white mb-1">
+                      <div className="text-base font-bold text-primary mb-1">
                         {activeTicket.key}: {activeTicket.summary}
                       </div>
-                      <p className="text-zinc-400">{activeTicket.description}</p>
+                      <p className="text-zinc-500 leading-relaxed">{activeTicket.description}</p>
                     </div>
 
+                    {/* Figma Design Link Section */}
+                    {activeTicket.figmaUrl ? (
+                      <div className="p-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className="text-base">🎨</span>
+                          <div className="overflow-hidden">
+                            <b className="text-purple-600 dark:text-purple-400 block text-xs">Figma Design Terkait</b>
+                            <span className="mono text-[10px] text-zinc-500 truncate block">
+                              {activeTicket.figmaUrl}
+                            </span>
+                          </div>
+                        </div>
+                        <a
+                          href={activeTicket.figmaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-violet text-xs whitespace-nowrap py-1 px-3"
+                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                        >
+                          Buka Figma ↗
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="p-2 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400 text-[11px] mono">
+                        Tidak ada link Figma terlampir di deskripsi tiket Jira ini.
+                      </div>
+                    )}
+
                     <div>
-                      <div className="font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                      <div className="font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-1">
                         Acceptance Criteria
                       </div>
-                      <ul className="flex flex-col gap-1 text-zinc-400 pl-4 list-disc">
+                      <ul className="flex flex-col gap-1 text-zinc-500 pl-4 list-disc">
                         {activeTicket.ac.map((acItem, i) => (
                           <li key={i}>{acItem}</li>
                         ))}
@@ -977,22 +1095,31 @@ export default function OfficePage() {
                     </div>
 
                     <div>
-                      <div className="font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                      <div className="font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-1">
                         Architectural Plan (Arga)
                       </div>
-                      <ol className="flex flex-col gap-1 text-zinc-400 pl-4 list-decimal">
+                      <ol className="flex flex-col gap-1 text-zinc-500 pl-4 list-decimal">
                         {activeTicket.plan.map((step, i) => (
                           <li key={i}>{step}</li>
                         ))}
                       </ol>
                     </div>
 
-                    <div>
-                      <div className="font-bold text-zinc-300 uppercase tracking-wider mb-1">
-                        Assigned Coder
-                      </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
+                        Assigned Coder:
+                      </span>
                       <span className="flow-chip" style={{ '--c': activeTicket.coder === 'bimo' ? '#8b5cf6' : '#10b981' }}>
                         {activeTicket.coder === 'bimo' ? 'Bimo (Senior Frontend)' : 'Kian (Senior Backend)'}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 mono text-[11px]">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold block mb-0.5">
+                        🤖 Eksekusi Antigravity AI
+                      </span>
+                      <span className="text-zinc-500">
+                        Target Folder: <b className="text-primary">{customRepoPath}</b>
                       </span>
                     </div>
                   </div>

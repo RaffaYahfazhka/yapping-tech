@@ -65,15 +65,56 @@ export async function GET(request) {
       return '';
     };
 
+    // Helper recursively searching for Figma design URLs inside ADF description
+    const extractFigmaUrl = (node) => {
+      if (!node) return null;
+      if (typeof node === 'object') {
+        const url = node?.attrs?.url;
+        if (typeof url === 'string' && url.includes('figma.com')) return url;
+        if (typeof node.text === 'string' && node.text.includes('figma.com')) {
+          const match = node.text.match(/https:\/\/[^\s"']+/);
+          if (match && match[0].includes('figma.com')) return match[0];
+        }
+        for (const key of Object.keys(node)) {
+          const found = extractFigmaUrl(node[key]);
+          if (found) return found;
+        }
+      } else if (Array.isArray(node)) {
+        for (const item of node) {
+          const found = extractFigmaUrl(item);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
     const tickets = (data.issues || []).map((issue) => {
       const typeName = issue.fields.issuetype?.name || 'Story';
       const isBug = typeName.toLowerCase().includes('bug');
-      const isFE = (issue.fields.summary || '').toLowerCase().includes('fe') || typeName.toLowerCase().includes('ui');
+      const isFE = (issue.fields.summary || '').toLowerCase().includes('fe') || typeName.toLowerCase().includes('ui') || typeName.toLowerCase().includes('styling');
       const coder = isFE ? 'bimo' : isBug ? 'bimo' : 'kian';
 
       let desc = extractText(issue.fields.description);
+      const figmaUrl = extractFigmaUrl(issue.fields.description);
+
       if (!desc || desc.trim().length === 0) {
         desc = `Tiket Jira aktif dari project ${issue.fields.project?.name} (${issue.fields.project?.key}).`;
+      }
+
+      // Extract custom AC items if present in description or fallback
+      let acItems = [];
+      if (desc.includes('Acceptance Criteria')) {
+        const acSection = desc.split(/Acceptance Criteria[:\s]*/i)[1] || '';
+        const rawLines = acSection.split(/Figma[:\s]*|Pain Points[:\s]*|Objective[:\s]*/i)[0];
+        const lines = rawLines.split(/\n|\.\s+/).map((l) => l.trim()).filter((l) => l.length > 5);
+        if (lines.length > 0) acItems = lines.slice(0, 4);
+      }
+      if (acItems.length === 0) {
+        acItems = [
+          `Implementasi fitur/fix sesuai summary: "${issue.fields.summary}"`,
+          'Unit & integration tests passing di CI pipeline',
+          'Code review lolos linting & pixel/schema check',
+        ];
       }
 
       return {
@@ -82,17 +123,14 @@ export async function GET(request) {
         type: ['Story', 'Bug', 'Task'].includes(typeName) ? typeName : 'Task',
         priority: issue.fields.priority?.name || 'Medium',
         status: issue.fields.status?.name || 'To Do',
-        description: desc.slice(0, 300),
+        description: desc.slice(0, 400),
         projectName: issue.fields.project?.name || 'General',
         projectKey: issue.fields.project?.key || 'JIRA',
         repo: 'frontend-dashboard-v2', // mapped default
         points: isBug ? 2 : 5,
         coder,
-        ac: [
-          `Implementasi fitur/fix sesuai summary: "${issue.fields.summary}"`,
-          'Unit & integration tests passing di CI pipeline',
-          'Code review lolos linting & pixel/schema check',
-        ],
+        figmaUrl: figmaUrl || null,
+        ac: acItems,
         plan: [
           'Arga: Scan codebase & susun dependency graph',
           `${coder === 'bimo' ? 'Bimo' : 'Kian'}: Implementasi kode & schema`,

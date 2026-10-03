@@ -1066,6 +1066,16 @@ export class OfficeScene {
     this.camera.lookAt(this.camCurrentLook);
   }
 
+  setTheme(isLight) {
+    if (!this.scene) return;
+    const bgCol = isLight ? '#f1f5f9' : '#0c0c0e';
+    this.scene.background = new THREE.Color(bgCol);
+    if (this.scene.fog) {
+      this.scene.fog.color = new THREE.Color(bgCol);
+      this.scene.fog.density = isLight ? 0.008 : 0.015;
+    }
+  }
+
   checkProximity() {
     let nearestAgent = null;
     let minDist = 4.5;

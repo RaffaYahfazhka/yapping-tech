@@ -285,7 +285,7 @@ export class PipelineRunner {
   /**
    * FITUR 2: Jira Multi-Repo Task Pipeline
    */
-  async runJiraPipeline({ ticketKey, ticket: ticketInput, repoId }) {
+  async runJiraPipeline({ ticketKey, ticket: ticketInput, repoId, projectPath }) {
     if (this.isRunning) return;
     this.isRunning = true;
     this.aborted = false;
@@ -296,6 +296,7 @@ export class PipelineRunner {
       : TICKETS.find((t) => t.key === ticketKey) || TICKETS[0];
     const repo = REPO_MAP[repoId] || REPO_MAP[ticket.repo] || REPOS[0];
     const coderId = ticket.coder || 'bimo';
+    const activeDir = projectPath || repo.id;
 
     this.onDiffChange({ files: ticket.files || [], activeIndex: 0, branch: `feat/${ticket.key.toLowerCase()}` });
 
@@ -323,7 +324,12 @@ export class PipelineRunner {
       this.onLog({
         sender: 'TARA',
         color: '#f59e0b',
-        text: `📋 [PM Triage] Membuka tiket Jira \x1b[1m${ticket.key}\x1b[0m (${ticket.type} · ${ticket.priority}) di repo \x1b[36m${repo.id}\x1b[0m`,
+        text: `📋 [PM Triage] Membuka tiket Jira \x1b[1m${ticket.key}\x1b[0m (${ticket.type} · ${ticket.priority})`,
+      });
+      this.onLog({
+        sender: 'TARA',
+        color: '#f59e0b',
+        text: `📁 Target Folder Eksekusi: \x1b[36m${activeDir}\x1b[0m`,
       });
       await this.sleep(800);
 
