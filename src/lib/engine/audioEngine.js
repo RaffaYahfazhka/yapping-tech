@@ -63,8 +63,8 @@ export class AudioEngine {
 
     try {
       this.player = new window.YT.Player(this.containerId, {
-        height: '180',
-        width: '320',
+        height: '140',
+        width: '240',
         videoId: this.videoId,
         playerVars: {
           autoplay: 0,
@@ -74,20 +74,22 @@ export class AudioEngine {
           modestbranding: 1,
           playsinline: 1,
           rel: 0,
+          enablejsapi: 1,
           origin: typeof window !== 'undefined' ? window.location.origin : '',
         },
         events: {
           onReady: (event) => {
             this.isReady = true;
             try {
-              this.player.setVolume(this.volume);
-              if (this.isPlaying && this.player.playVideo) {
-                this.player.playVideo();
+              event.target.setVolume(this.volume || 70);
+              event.target.unMute();
+              if (this.isPlaying) {
+                event.target.playVideo();
               }
             } catch (err) {
               console.warn('onReady setup error', err);
             }
-            this.onStateChange({ ready: true, isPlaying: this.isPlaying, volume: this.volume });
+            this.onStateChange({ ready: true, isPlaying: this.isPlaying, volume: this.volume, isMuted: false });
           },
           onStateChange: (event) => {
             // YT.PlayerState: PLAYING = 1, PAUSED = 2, ENDED = 0, BUFFERING = 3
@@ -114,18 +116,22 @@ export class AudioEngine {
 
   play() {
     this.isPlaying = true;
-    if (this.player && this.isReady && this.player.playVideo) {
+    if (this.player) {
       try {
-        this.player.playVideo();
+        if (this.player.unMute) this.player.unMute();
+        if (this.player.setVolume) this.player.setVolume(this.volume || 70);
+        if (this.player.playVideo) this.player.playVideo();
         this.startPolling();
-      } catch (err) {}
+      } catch (err) {
+        console.warn('Play video failed', err);
+      }
     }
-    this.onStateChange({ ready: this.isReady, isPlaying: true, volume: this.volume, isMuted: this.isMuted });
+    this.onStateChange({ ready: this.isReady, isPlaying: true, volume: this.volume, isMuted: false });
   }
 
   pause() {
     this.isPlaying = false;
-    if (this.player && this.isReady && this.player.pauseVideo) {
+    if (this.player && this.player.pauseVideo) {
       try {
         this.player.pauseVideo();
       } catch (err) {}

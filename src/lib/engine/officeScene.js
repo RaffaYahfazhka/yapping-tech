@@ -164,7 +164,7 @@ export class OfficeScene {
 
   setupArchitecture() {
     // 1. Expansive Studio Horizon Floor (fills the entire screen seamlessly)
-    const outerFloorGeo = new THREE.PlaneGeometry(200, 200);
+    const outerFloorGeo = new THREE.PlaneGeometry(240, 240);
     const outerFloorMat = new THREE.MeshStandardMaterial({
       color: '#121216',
       roughness: 0.9,
@@ -172,39 +172,48 @@ export class OfficeScene {
     });
     const outerFloor = new THREE.Mesh(outerFloorGeo, outerFloorMat);
     outerFloor.rotation.x = -Math.PI / 2;
-    outerFloor.position.y = -0.32;
+    outerFloor.position.y = -0.35;
     outerFloor.receiveShadow = true;
     this.scene.add(outerFloor);
 
     // Subtle outer architectural grid
-    const outerGrid = new THREE.GridHelper(200, 80, '#26262e', '#18181f');
-    outerGrid.position.y = -0.31;
+    const outerGrid = new THREE.GridHelper(240, 60, '#26262e', '#18181f');
+    outerGrid.position.y = -0.34;
     this.scene.add(outerGrid);
 
-    // 2. Main Office Floor (Warm Architectural Studio)
+    // Floor Base Slab (top sits strictly at y = -0.02, below the office floor)
+    const slabGeo = new THREE.BoxGeometry(ROOM.maxX * 2 + 1.2, 0.58, ROOM.maxZ * 2 + 1.2);
+    const slabMat = new THREE.MeshStandardMaterial({ color: PALETTE.slab, roughness: 0.9 });
+    const slab = new THREE.Mesh(slabGeo, slabMat);
+    slab.position.y = -0.31; // top face = -0.31 + 0.29 = -0.02
+    slab.receiveShadow = true;
+    this.scene.add(slab);
+
+    // 2. Main Office Floor (Warm Architectural Studio at y = 0.005 with polygonOffset)
     const floorGeo = new THREE.PlaneGeometry(ROOM.maxX * 2, ROOM.maxZ * 2);
     const floorMat = new THREE.MeshStandardMaterial({
       color: PALETTE.floor,
       roughness: 0.65,
       metalness: 0.08,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.005;
     floor.receiveShadow = true;
     this.scene.add(floor);
     this.floorPlane = floor;
 
-    // Floor Base Slab
-    const slabGeo = new THREE.BoxGeometry(ROOM.maxX * 2 + 1.2, 0.6, ROOM.maxZ * 2 + 1.2);
-    const slabMat = new THREE.MeshStandardMaterial({ color: PALETTE.slab, roughness: 0.9 });
-    const slab = new THREE.Mesh(slabGeo, slabMat);
-    slab.position.y = -0.3;
-    slab.receiveShadow = true;
-    this.scene.add(slab);
-
-    // Architectural floor tile grid lines inside office
+    // Architectural floor tile grid lines inside office (at y = 0.015 with polygonOffset)
     const gridHelper = new THREE.GridHelper(ROOM.maxX * 2, 32, '#a89f91', '#ded7cc');
-    gridHelper.position.y = 0.01;
+    gridHelper.position.y = 0.015;
+    if (gridHelper.material) {
+      gridHelper.material.polygonOffset = true;
+      gridHelper.material.polygonOffsetFactor = -2;
+      gridHelper.material.polygonOffsetUnits = -2;
+    }
     this.scene.add(gridHelper);
 
     // Modern low back walls (aesthetic studio backdrop)
@@ -474,12 +483,12 @@ export class OfficeScene {
       badgeObj.sprite.position.set(0, 2.3, 0.3);
       group.add(badgeObj.sprite);
 
-      // Click hit target for desk interaction
+      // Click hit target for desk interaction (generous bounds for easy clicking)
       const hitBox = new THREE.Mesh(
-        new THREE.BoxGeometry(deskW + 0.4, 2.0, deskD + 1.0),
+        new THREE.BoxGeometry(deskW + 1.4, 2.8, deskD + 1.8),
         new THREE.MeshBasicMaterial({ visible: false })
       );
-      hitBox.position.set(0, 1.0, 0.2);
+      hitBox.position.set(0, 1.2, 0.2);
       hitBox.userData = { agentId: agent.id, deskPos: new THREE.Vector3(agent.desk.x, 0, agent.desk.z) };
       group.add(hitBox);
       this.interactiveMeshes.push(hitBox);
@@ -1059,7 +1068,7 @@ export class OfficeScene {
 
   checkProximity() {
     let nearestAgent = null;
-    let minDist = 3.2;
+    let minDist = 4.5;
 
     this.agentMeshes.forEach((item) => {
       const dist = this.playerPos.distanceTo(item.deskPos);

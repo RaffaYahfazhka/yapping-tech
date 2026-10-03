@@ -797,6 +797,26 @@ body {
   transform: scale(1.05);
 }
 
+/* Hidden YouTube Player Host (keeps minimal opacity and real dimensions so Chrome allows audio autoplay) */
+#yt-player-host {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 240px;
+  height: 140px;
+  z-index: 5;
+  opacity: 0.02;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+#yt-player-host iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: none;
+}
+
 /* Animated 9-bar Equalizer */
 .eq {
   display: flex;

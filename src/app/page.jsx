@@ -65,6 +65,12 @@ export default function OfficePage() {
   const [ticketSearch, setTicketSearch] = useState('');
   const [ticketTypeFilter, setTicketTypeFilter] = useState('all');
 
+  // Ref to hold near agent without re-triggering main useEffect
+  const interactAgentRef = useRef(null);
+  useEffect(() => {
+    interactAgentRef.current = interactAgent;
+  }, [interactAgent]);
+
   // 1. Clock timer
   useEffect(() => {
     const timer = setInterval(() => {
@@ -79,7 +85,7 @@ export default function OfficePage() {
     setFigmaParseResult(parseFigmaInput(figmaUrl));
   }, [figmaUrl]);
 
-  // 3. Initialize 3D Scene & Audio Engine
+  // 3. Initialize 3D Scene & Audio Engine ONCE
   useEffect(() => {
     if (!stageRef.current) return;
 
@@ -87,7 +93,7 @@ export default function OfficePage() {
     const scene = new OfficeScene(
       stageRef.current,
       (nearAgent) => {
-        setInteractAgent(nearAgent);
+        setInteractAgent((prev) => (prev?.id === nearAgent?.id ? prev : nearAgent));
       },
       (agentId) => {
         if (agentId === 'bimo') {
@@ -159,10 +165,13 @@ export default function OfficePage() {
       } else if (e.code === 'KeyM' && !e.repeat) {
         audio.toggleMute();
       } else if (e.code === 'KeyE' && !e.repeat) {
-        // Interact with near agent
-        if (interactAgent) {
-          if (interactAgent.id === 'bimo') setIsFigmaOpen(true);
+        // Interact with near agent or open Mission Control
+        const near = interactAgentRef.current;
+        if (near) {
+          if (near.id === 'bimo') setIsFigmaOpen(true);
           else setIsMissionOpen(true);
+        } else {
+          setIsMissionOpen(true);
         }
       } else if (e.code === 'Escape') {
         setIsFigmaOpen(false);
@@ -202,7 +211,7 @@ export default function OfficePage() {
       scene.destroy();
       audio.destroy();
     };
-  }, [interactAgent]);
+  }, []);
 
   // Terminal scroll to bottom on new log (safe container scroll, never shifts window)
   const logsPaneRef = useRef(null);
@@ -422,10 +431,18 @@ export default function OfficePage() {
 
       {/* ===================== INTERACTION PROMPT ===================== */}
       {interactAgent && (
-        <div id="interact-prompt" className="interact-prompt glass">
+        <div
+          id="interact-prompt"
+          className="interact-prompt glass"
+          style={{ cursor: 'pointer' }}
+          onClick={() => {
+            if (interactAgent.id === 'bimo') setIsFigmaOpen(true);
+            else setIsMissionOpen(true);
+          }}
+        >
           <kbd className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-xs">E</kbd>
           <span>
-            Bicara dengan <b>{interactAgent.name}</b> ({interactAgent.role})
+            Bicara dengan <b>{interactAgent.name}</b> ({interactAgent.role}) — <b className="text-emerald-400">Klik / Tekan [E]</b>
           </span>
         </div>
       )}
