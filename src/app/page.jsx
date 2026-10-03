@@ -31,6 +31,16 @@ export default function OfficePage() {
     isMuted: false,
   });
   const [audioTime, setAudioTime] = useState({ currentTime: 0, duration: 196 });
+  const [currentTrack, setCurrentTrack] = useState({
+    title: 'Pitch Dark',
+    artist: 'CHON · YouTube API',
+    videoId: 'sF80I-TQiW0',
+    cover: 'https://i.ytimg.com/vi/sF80I-TQiW0/mqdefault.jpg',
+  });
+  const [isMusicModalOpen, setIsMusicModalOpen] = useState(false);
+  const [musicInputUrl, setMusicInputUrl] = useState('');
+  const [musicInputTitle, setMusicInputTitle] = useState('');
+  const [musicInputArtist, setMusicInputArtist] = useState('');
 
   // Terminal & Pipeline State
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
@@ -128,7 +138,7 @@ export default function OfficePage() {
         setInteractAgent((prev) => (prev?.id === nearAgent?.id ? prev : nearAgent));
       },
       (agentId) => {
-        if (agentId === 'bimo') {
+        if (agentId === 'jajang') {
           setIsFigmaOpen(true);
         } else {
           setIsMissionOpen(true);
@@ -200,7 +210,7 @@ export default function OfficePage() {
         // Interact with near agent or open Mission Control
         const near = interactAgentRef.current;
         if (near) {
-          if (near.id === 'bimo') setIsFigmaOpen(true);
+          if (near.id === 'jajang') setIsFigmaOpen(true);
           else setIsMissionOpen(true);
         } else {
           setIsMissionOpen(true);
@@ -355,6 +365,57 @@ export default function OfficePage() {
     });
   };
 
+  // Helper to extract YouTube Video ID or Playlist ID from URL
+  const handleApplyCustomMusic = (e) => {
+    e.preventDefault();
+    if (!musicInputUrl.trim()) return;
+
+    let videoId = null;
+    let playlistId = null;
+    const input = musicInputUrl.trim();
+
+    try {
+      if (input.includes('list=')) {
+        const match = input.match(/[?&]list=([^#&?]+)/);
+        if (match) playlistId = match[1];
+      }
+      if (input.includes('youtu.be/')) {
+        videoId = input.split('youtu.be/')[1]?.split('?')[0];
+      } else if (input.includes('v=')) {
+        const match = input.match(/[?&]v=([^#&?]+)/);
+        if (match) videoId = match[1];
+      } else if (!input.includes('/') && input.length >= 10 && input.length <= 15) {
+        videoId = input;
+      }
+    } catch (err) {
+      console.warn('Error parsing music URL', err);
+    }
+
+    if (!videoId && !playlistId) {
+      alert('URL tidak dikenali. Masukkan link YouTube / YouTube Music (contoh: https://music.youtube.com/watch?v=... atau https://www.youtube.com/watch?v=...)');
+      return;
+    }
+
+    const title = musicInputTitle.trim() || (playlistId ? 'Custom Playlist' : 'Custom Track');
+    const artist = musicInputArtist.trim() || 'YouTube Music';
+    const cover = videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : currentTrack.cover;
+
+    setCurrentTrack({
+      title,
+      artist,
+      videoId: videoId || currentTrack.videoId,
+      cover,
+    });
+
+    if (playlistId && audioRef.current?.loadPlaylist) {
+      audioRef.current.loadPlaylist(playlistId);
+    } else if (videoId && audioRef.current?.loadTrack) {
+      audioRef.current.loadTrack(videoId, title, artist);
+    }
+
+    setIsMusicModalOpen(false);
+  };
+
   return (
     <main id="app" className="relative w-screen h-screen overflow-hidden">
       <h1 className="sr-only">Kantor Raffa — Interactive 3D Virtual AI Office &amp; Autonomous Mission Control</h1>
@@ -503,7 +564,7 @@ export default function OfficePage() {
           className="interact-prompt glass"
           style={{ cursor: 'pointer' }}
           onClick={() => {
-            if (interactAgent.id === 'bimo') setIsFigmaOpen(true);
+            if (interactAgent.id === 'jajang') setIsFigmaOpen(true);
             else setIsMissionOpen(true);
           }}
         >
@@ -647,11 +708,16 @@ export default function OfficePage() {
 
       {/* ===================== AUDIO WIDGET ===================== */}
       <section className={`audio-widget glass ${audioState.isPlaying ? 'playing' : ''}`} aria-label="Music player">
-        <div className="aw-cover">
+        <div
+          className="aw-cover"
+          onClick={() => setIsMusicModalOpen(true)}
+          style={{ cursor: 'pointer' }}
+          title="Klik untuk ganti lagu / playlist YouTube Music akunmu"
+        >
           {/* Album thumbnail */}
           <img
-            src="https://i.ytimg.com/vi/sF80I-TQiW0/mqdefault.jpg"
-            alt="CHON — Pitch Dark"
+            src={currentTrack.cover}
+            alt={currentTrack.title}
             loading="lazy"
             crossOrigin="anonymous"
           />
@@ -663,12 +729,20 @@ export default function OfficePage() {
             <span>{audioState.isPlaying ? 'PLAYING' : 'STANDBY'}</span>
             <span className="text-zinc-500">
               {Math.floor(audioTime.currentTime / 60)}:
-              {String(Math.floor(audioTime.currentTime % 60)).padStart(2, '0')} / 3:16
+              {String(Math.floor(audioTime.currentTime % 60)).padStart(2, '0')} / {Math.floor(audioTime.duration / 60)}:{String(Math.floor(audioTime.duration % 60)).padStart(2, '0')}
             </span>
           </div>
-          <div className="aw-track">
-            <div className="aw-title">Pitch Dark</div>
-            <div className="aw-artist">CHON · YouTube API</div>
+          <div
+            className="aw-track"
+            onClick={() => setIsMusicModalOpen(true)}
+            style={{ cursor: 'pointer' }}
+            title="Klik untuk ganti lagu / playlist YouTube Music akunmu"
+          >
+            <div className="aw-title flex items-center gap-1.5">
+              <span>{currentTrack.title}</span>
+              <span className="text-[10px] text-emerald-500">✎</span>
+            </div>
+            <div className="aw-artist">{currentTrack.artist}</div>
           </div>
           <div className="aw-controls">
             <button
@@ -769,8 +843,8 @@ export default function OfficePage() {
                 </svg>
               </div>
               <div>
-                <h2>Delegasi Slicing Figma ke Bimo</h2>
-                <p>Pixel-perfect autonomous loop: Bimo (Frontend) ⇄ Vani (QA) ➔ Reno (DevOps)</p>
+                <h2>Delegasi Slicing Figma ke jajang</h2>
+                <p>Pixel-perfect autonomous loop: jajang (Frontend) ⇄ Vani (QA) ➔ Reno (DevOps)</p>
               </div>
               <button
                 className="btn-icon modal-close"
@@ -834,7 +908,7 @@ export default function OfficePage() {
 
               <div className="flow-preview">
                 <span className="flow-chip" style={{ '--c': '#8b5cf6' }}>
-                  Bimo · Spec ➔ Code
+                  jajang · Spec ➔ Code
                 </span>
                 <span className="flow-arrow">⇄</span>
                 <span className="flow-chip" style={{ '--c': '#f43f5e' }}>
@@ -851,7 +925,7 @@ export default function OfficePage() {
                 className="btn btn-violet btn-lg w-full"
                 disabled={!figmaParseResult || !figmaParseResult.ok}
               >
-                🚀 Bimo, Slicing Sampai Presisi!
+                🚀 jajang, Slicing Sampai Presisi!
               </button>
             </form>
           </div>
@@ -1139,8 +1213,8 @@ export default function OfficePage() {
                       <span className="font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
                         Assigned Coder:
                       </span>
-                      <span className="flow-chip" style={{ '--c': activeTicket.coder === 'bimo' ? '#8b5cf6' : '#10b981' }}>
-                        {activeTicket.coder === 'bimo' ? 'Bimo (Senior Frontend)' : 'Kian (Senior Backend)'}
+                      <span className="flow-chip" style={{ '--c': activeTicket.coder === 'jajang' ? '#8b5cf6' : '#10b981' }}>
+                        {activeTicket.coder === 'jajang' ? 'jajang (Senior Frontend)' : 'Kian (Senior Backend)'}
                       </span>
                     </div>
 
@@ -1166,7 +1240,7 @@ export default function OfficePage() {
                 <span className="flow-chip" style={{ '--c': '#38bdf8' }}>Arga (Arch)</span>
                 <span className="flow-arrow">➔</span>
                 <span className="flow-chip" style={{ '--c': activeTicket?.coder === 'kian' ? '#10b981' : '#8b5cf6' }}>
-                  {activeTicket?.coder === 'kian' ? 'Kian (BE)' : 'Bimo (FE)'}
+                  {activeTicket?.coder === 'kian' ? 'Kian (BE)' : 'jajang (FE)'}
                 </span>
                 <span className="flow-arrow">➔</span>
                 <span className="flow-chip" style={{ '--c': '#f43f5e' }}>Vani (QA)</span>
@@ -1215,7 +1289,7 @@ export default function OfficePage() {
                 <div><kbd>Klik Lantai</kbd></div><div>Click-to-move (raycast)</div>
                 <div><kbd>Klik Meja</kbd></div><div>Jalan ke meja &amp; delegasi</div>
                 <div><kbd>E</kbd></div><div>Interaksi dengan agen terdekat</div>
-                <div><kbd>F</kbd></div><div>Slicing Figma ke Bimo</div>
+                <div><kbd>F</kbd></div><div>Slicing Figma ke jajang</div>
                 <div><kbd>J</kbd></div><div>Mission Control (Jira)</div>
                 <div><kbd>T</kbd></div><div>Toggle Terminal Drawer</div>
                 <div><kbd>P</kbd> / <kbd>M</kbd></div><div>Play/Pause · Mute audio</div>
@@ -1224,6 +1298,100 @@ export default function OfficePage() {
                 <div><kbd>Esc</kbd></div><div>Tutup panel / modal</div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: YOUTUBE MUSIC SWITCHER ===================== */}
+      {isMusicModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsMusicModalOpen(false)}>
+          <div className="modal modal-sm glass" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-icon violet">🎵</div>
+              <div>
+                <h2>Ganti Lagu / Playlist YouTube</h2>
+                <p>Masukkan link YouTube Music akunmu (lagu atau playlist)</p>
+              </div>
+              <button
+                className="btn-icon modal-close"
+                type="button"
+                aria-label="Tutup"
+                onClick={() => setIsMusicModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <form className="modal-body" onSubmit={handleApplyCustomMusic}>
+              <label className="field">
+                <span className="field-label">Link YouTube / YouTube Music URL</span>
+                <input
+                  className="input mono text-xs"
+                  placeholder="https://music.youtube.com/playlist?list=... atau /watch?v=..."
+                  value={musicInputUrl}
+                  onChange={(e) => setMusicInputUrl(e.target.value)}
+                  required
+                />
+                <small className="mono text-[10px] text-zinc-500">
+                  Bisa berupa link lagu, playlist publik/unlisted akunmu, atau Video ID.
+                </small>
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="field">
+                  <span className="field-label">Judul (Opsional)</span>
+                  <input
+                    className="input text-xs"
+                    placeholder="Judul Playlist / Lagu"
+                    value={musicInputTitle}
+                    onChange={(e) => setMusicInputTitle(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Artist (Opsional)</span>
+                  <input
+                    className="input text-xs"
+                    placeholder="Nama Playlist / Artist"
+                    value={musicInputArtist}
+                    onChange={(e) => setMusicInputArtist(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 text-[11px] text-zinc-500">
+                <b className="text-purple-500 block mb-1">💡 Tips Link Playlist Akunmu:</b>
+                Pastikan playlist di YouTube Music kamu diset ke <b>Unlisted</b> atau <b>Public</b> agar YouTube IFrame API dapat memutarnya di dalam aplikasi.
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex flex-col gap-1.5">
+                <span className="field-label text-[10px] uppercase font-bold text-zinc-500">Preset Rekomendasi:</span>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { title: 'CHON — Pitch Dark', artist: 'CHON (Math Rock)', url: 'https://www.youtube.com/watch?v=sF80I-TQiW0' },
+                    { title: 'Lofi Girl — Beats to relax/study to', artist: 'Lofi Girl', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
+                    { title: 'Synthwave Coding Chill', artist: 'ChilledCow', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className="p-1.5 rounded-md border border-subtle text-left text-xs hover:border-emerald-500 flex items-center justify-between"
+                      onClick={() => {
+                        setMusicInputUrl(preset.url);
+                        setMusicInputTitle(preset.title);
+                        setMusicInputArtist(preset.artist);
+                      }}
+                    >
+                      <span className="font-semibold text-primary">{preset.title}</span>
+                      <span className="text-[10px] text-zinc-500 mono">{preset.artist}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" className="btn btn-emerald btn-lg w-full mt-2">
+                ▶ Terapkan &amp; Putar Musik
+              </button>
+            </form>
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@
 export class AudioEngine {
   constructor(options = {}) {
     this.videoId = 'sF80I-TQiW0';
+    this.playlistId = null;
     this.containerId = options.containerId || 'yt-player-host';
     this.onStateChange = options.onStateChange || (() => {});
     this.onTimeUpdate = options.onTimeUpdate || (() => {});
@@ -18,6 +19,38 @@ export class AudioEngine {
     this.currentTime = 0;
 
     this.pollTimer = null;
+  }
+
+  // Load a custom track by videoId
+  loadTrack(videoId, title, artist) {
+    if (!videoId) return;
+    this.videoId = videoId;
+    this.playlistId = null;
+    if (this.player && this.player.loadVideoById) {
+      try {
+        this.player.loadVideoById(videoId);
+        this.isPlaying = true;
+      } catch (err) {
+        console.warn('loadVideoById error', err);
+      }
+    }
+  }
+
+  // Load a YouTube Music / YouTube playlist
+  loadPlaylist(playlistId) {
+    if (!playlistId) return;
+    this.playlistId = playlistId;
+    if (this.player && this.player.loadPlaylist) {
+      try {
+        this.player.loadPlaylist({
+          list: playlistId,
+          listType: 'playlist',
+        });
+        this.isPlaying = true;
+      } catch (err) {
+        console.warn('loadPlaylist error', err);
+      }
+    }
   }
 
   init() {
