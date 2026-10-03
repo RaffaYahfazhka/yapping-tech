@@ -285,16 +285,19 @@ export class PipelineRunner {
   /**
    * FITUR 2: Jira Multi-Repo Task Pipeline
    */
-  async runJiraPipeline({ ticketKey, repoId }) {
+  async runJiraPipeline({ ticketKey, ticket: ticketInput, repoId }) {
     if (this.isRunning) return;
     this.isRunning = true;
     this.aborted = false;
 
-    const ticket = TICKETS.find((t) => t.key === ticketKey) || TICKETS[0];
+    // Support passing ticket object directly or finding by key
+    const ticket = typeof ticketInput === 'object' && ticketInput !== null
+      ? ticketInput
+      : TICKETS.find((t) => t.key === ticketKey) || TICKETS[0];
     const repo = REPO_MAP[repoId] || REPO_MAP[ticket.repo] || REPOS[0];
     const coderId = ticket.coder || 'bimo';
 
-    this.onDiffChange({ files: ticket.files, activeIndex: 0, branch: `feat/${ticket.key.toLowerCase()}` });
+    this.onDiffChange({ files: ticket.files || [], activeIndex: 0, branch: `feat/${ticket.key.toLowerCase()}` });
 
     const steps = [
       { id: 'tara_triage', label: 'Tara: Jira Triage & AC', agent: 'tara' },

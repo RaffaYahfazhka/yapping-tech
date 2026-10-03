@@ -59,11 +59,37 @@ export default function OfficePage() {
   const [figmaStrict, setFigmaStrict] = useState(true);
   const [figmaParseResult, setFigmaParseResult] = useState(null);
 
-  // Mission Control Modal State
-  const [selectedRepoId, setSelectedRepoId] = useState('frontend-dashboard-v2');
-  const [selectedTicketKey, setSelectedTicketKey] = useState('JIRA-104');
-  const [ticketSearch, setTicketSearch] = useState('');
+  // Live Jira Cloud & Ticket Selection State
+  const [useLiveJira, setUseLiveJira] = useState(true);
+  const [liveTickets, setLiveTickets] = useState([]);
+  const [jiraLoading, setJiraLoading] = useState(false);
+  const [jiraError, setJiraError] = useState(null);
+  const [selectedRepoId, setSelectedRepoId] = useState(REPOS[0]?.id || 'frontend-dashboard-v2');
+  const [selectedTicketKey, setSelectedTicketKey] = useState(TICKETS[0]?.key || '');
   const [ticketTypeFilter, setTicketTypeFilter] = useState('all');
+  const [ticketSearch, setTicketSearch] = useState('');
+
+  // Fetch live Jira tickets from /api/jira/tickets
+  useEffect(() => {
+    async function loadJira() {
+      setJiraLoading(true);
+      try {
+        const res = await fetch('/api/jira/tickets');
+        const data = await res.json();
+        if (data.tickets && data.tickets.length > 0) {
+          setLiveTickets(data.tickets);
+          setSelectedTicketKey(data.tickets[0].key);
+        } else if (data.error) {
+          setJiraError(data.error);
+        }
+      } catch (err) {
+        setJiraError(err.message);
+      } finally {
+        setJiraLoading(false);
+      }
+    }
+    loadJira();
+  }, []);
 
   // Ref to hold near agent without re-triggering main useEffect
   const interactAgentRef = useRef(null);
@@ -264,19 +290,6 @@ export default function OfficePage() {
     });
   };
 
-  // Run Jira Pipeline
-  const handleExecuteJira = () => {
-    setIsMissionOpen(false);
-    setIsTerminalOpen(true);
-    setTermTab('logs');
-    setMissionState('RUNNING');
-    setPipelineTimer(null);
-
-    pipelineRef.current.runJiraPipeline({
-      ticketKey: selectedTicketKey,
-      repoId: selectedRepoId,
-    });
-  };
 
   const handleSpeedToggle = () => {
     const nextSpeed = simSpeed === 1 ? 2 : simSpeed === 2 ? 4 : 1;
@@ -284,9 +297,11 @@ export default function OfficePage() {
     if (pipelineRef.current) pipelineRef.current.setSpeed(nextSpeed);
   };
 
-  // Filtered tickets
-  const filteredTickets = TICKETS.filter((t) => {
-    const matchRepo = t.repo === selectedRepoId;
+  // Filtered tickets (switches between live Jira Cloud and mock presets)
+  const ticketPool = (useLiveJira && liveTickets.length > 0) ? liveTickets : TICKETS;
+
+  const filteredTickets = ticketPool.filter((t) => {
+    const matchRepo = useLiveJira ? true : t.repo === selectedRepoId;
     const matchType = ticketTypeFilter === 'all' || t.type === ticketTypeFilter;
     const matchSearch =
       !ticketSearch ||
@@ -295,7 +310,22 @@ export default function OfficePage() {
     return matchRepo && matchType && matchSearch;
   });
 
-  const activeTicket = TICKETS.find((t) => t.key === selectedTicketKey) || filteredTickets[0];
+  const activeTicket = ticketPool.find((t) => t.key === selectedTicketKey) || filteredTickets[0];
+
+  // Run Jira Pipeline with live ticket payload
+  const handleExecuteJira = () => {
+    setIsMissionOpen(false);
+    setIsTerminalOpen(true);
+    setTermTab('logs');
+    setMissionState('RUNNING');
+    setPipelineTimer(null);
+
+    pipelineRef.current.runJiraPipeline({
+      ticketKey: activeTicket?.key,
+      ticket: activeTicket,
+      repoId: selectedRepoId,
+    });
+  };
 
   return (
     <main id="app" className="relative w-screen h-screen overflow-hidden">
@@ -839,9 +869,31 @@ export default function OfficePage() {
 
               {/* Column 2: Tickets */}
               <section className="mission-col">
-                <h3 className="col-title">
-                  <span className="step-no">2</span> Tiket Jira ({filteredTickets.length})
-                </h3>
+                <div className="flex items-center justify-between gap-1 mb-2">
+                  <h3 className="col-title m-0">
+                    <span className="step-no">2</span> Tiket Jira ({filteredTickets.length})
+                  </h3>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className={`chip mono text-[10px] ${useLiveJira ? 'active' : ''}`}
+                      onClick={() => setUseLiveJira((prev) => !prev)}
+                      title={useLiveJira ? 'Terhubung ke Jira Cloud: etbteam.atlassian.net' : 'Menggunakan preset simulasi mock'}
+                    >
+                      {useLiveJira ? '🟢 etbteam.atlassian.net' : '⚪ Mock Presets'}
+                    </button>
+                  </div>
+                </div>
+                {jiraLoading && (
+                  <div className="text-[11px] text-zinc-400 mono italic animate-pulse mb-1">
+                    ⏳ Memuat tiket live dari Jira Cloud...
+                  </div>
+                )}
+                {jiraError && useLiveJira && (
+                  <div className="text-[10px] text-rose-400 mono mb-1">
+                    ⚠️ {jiraError} (Beralih ke fallback)
+                  </div>
+                )}
                 <input
                   className="input text-xs"
                   placeholder="Cari key / summary..."
