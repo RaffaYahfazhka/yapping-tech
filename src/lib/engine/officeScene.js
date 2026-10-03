@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { CAMERA_OFFSET, CAMERA_YAW, ROOM, PLAYER, PALETTE } from './constants.js';
 import { screenToWorld, facingFromDirection, dampAngle } from './movement.js';
+import { resolveMovement } from './collision.js';
 import { AGENTS, BOSS } from '../data/agents.js';
 
 /**
  * Modern Architectural Low-Poly 3D Virtual AI Office
  * Features:
- * - Isometric Orthographic Camera with smooth target panning & zoom
- * - Screen-relative anti-inverted WASD movement + Click-to-move raycasting
+ * - Isometric Orthographic Camera with smooth mouse drag-pan & zoom
+ * - Screen-relative anti-inverted WASD movement with Obstacle Collision & Wall-sliding
  * - 6 AI Agent Workstations with low-poly avatars, idle typing animation, and floating canvas status badges
  * - Boss character (Raffa) with walking animation, crown/accent, facing direction
  * - War-room holographic table with rotating rings and glowing core
@@ -25,17 +26,23 @@ export class OfficeScene {
     this.renderer = null;
     this.clock = new THREE.Clock();
 
-    // Camera control
+    // Camera control & Drag-Pan
     this.camTarget = new THREE.Vector3(0, 0, 0);
     this.camCurrentLook = new THREE.Vector3(0, 0, 0);
+    this.userPanOffset = new THREE.Vector3(0, 0, 0);
     this.zoomLevel = 1.0;
     this.targetZoom = 1.0;
     this.focusingOnAgent = null;
 
+    // Mouse drag for camera panning (WASD only for player move)
+    this.isDraggingCamera = false;
+    this.dragStart = { x: 0, y: 0 };
+    this.dragStartPan = new THREE.Vector3(0, 0, 0);
+    this.totalDragDist = 0;
+
     // Boss Player
     this.player = null;
     this.playerPos = new THREE.Vector3(BOSS.spawn.x, 0, BOSS.spawn.z);
-    this.playerTargetPos = null; // for click-to-move
     this.playerFacing = 0;
     this.targetFacing = 0;
     this.isMoving = false;
@@ -776,57 +783,80 @@ export class OfficeScene {
 
   setupEvents() {
     this.onPointerDown = this.handlePointerDown.bind(this);
+    this.onPointerMove = this.handlePointerMove.bind(this);
+    this.onPointerUp = this.handlePointerUp.bind(this);
+    this.onDblClick = this.handleDblClick.bind(this);
     this.onWheel = this.handleWheel.bind(this);
     this.onResize = this.handleResize.bind(this);
 
     this.renderer.domElement.addEventListener('pointerdown', this.onPointerDown);
+    window.addEventListener('pointermove', this.onPointerMove);
+    window.addEventListener('pointerup', this.onPointerUp);
+    this.renderer.domElement.addEventListener('dblclick', this.onDblClick);
     this.renderer.domElement.addEventListener('wheel', this.onWheel, { passive: true });
     window.addEventListener('resize', this.onResize);
   }
 
   handlePointerDown(event) {
-    if (event.button !== 0) return; // primary left click only
+    if (event.button !== 0 && event.button !== 2) return;
 
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.isDraggingCamera = true;
+    this.dragStart.x = event.clientX;
+    this.dragStart.y = event.clientY;
+    this.dragStartPan.copy(this.userPanOffset);
+    this.totalDragDist = 0;
+  }
 
-    this.raycaster.setFromCamera(this.mouse, this.camera);
+  handlePointerMove(event) {
+    if (!this.isDraggingCamera) return;
 
-    // 1. Check if clicked an interactive desk
-    const deskIntersects = this.raycaster.intersectObjects(this.interactiveMeshes, false);
-    if (deskIntersects.length > 0) {
-      const hit = deskIntersects[0];
-      const agentId = hit.object.userData.agentId;
-      const deskPos = hit.object.userData.deskPos;
-      if (agentId) {
-        // Move player near desk & trigger callback
-        this.setDestination(deskPos.x, deskPos.z + 1.2);
-        this.onDeskClicked(agentId);
-        return;
+    const dx = event.clientX - this.dragStart.x;
+    const dy = event.clientY - this.dragStart.y;
+    this.totalDragDist = Math.hypot(dx, dy);
+
+    // Pan camera across the isometric floor plane
+    const containerH = this.container.clientHeight || window.innerHeight;
+    const containerW = this.container.clientWidth || window.innerWidth;
+    const viewHeight = 20 / (this.zoomLevel || 1.0);
+    const viewWidth = viewHeight * (containerW / containerH);
+
+    const worldDx = (dx / containerW) * viewWidth;
+    const worldDy = (dy / containerH) * viewHeight;
+
+    const angle = -CAMERA_YAW;
+    const panX = -(worldDx * Math.cos(angle) - worldDy * Math.sin(angle));
+    const panZ = -(worldDx * Math.sin(angle) + worldDy * Math.cos(angle));
+
+    this.userPanOffset.x = Math.max(ROOM.minX - 6, Math.min(ROOM.maxX + 6, this.dragStartPan.x + panX));
+    this.userPanOffset.z = Math.max(ROOM.minZ - 6, Math.min(ROOM.maxZ + 6, this.dragStartPan.z + panZ));
+  }
+
+  handlePointerUp(event) {
+    if (!this.isDraggingCamera) return;
+    this.isDraggingCamera = false;
+
+    // If mouse was clicked without dragging (< 6px), inspect clicked agent
+    if (this.totalDragDist < 6 && event.button === 0) {
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      this.raycaster.setFromCamera(this.mouse, this.camera);
+
+      // Check if clicked an interactive desk or agent
+      const deskIntersects = this.raycaster.intersectObjects(this.interactiveMeshes, false);
+      if (deskIntersects.length > 0) {
+        const hit = deskIntersects[0];
+        const agentId = hit.object.userData.agentId;
+        if (agentId) {
+          this.onDeskClicked(agentId);
+        }
       }
-    }
-
-    // 2. Click-to-move on floor plane
-    const floorIntersects = this.raycaster.intersectObject(this.floorPlane, false);
-    if (floorIntersects.length > 0) {
-      const hit = floorIntersects[0];
-      this.setDestination(hit.point.x, hit.point.z);
     }
   }
 
-  setDestination(x, z) {
-    // Clamp to room bounds
-    const cx = Math.max(ROOM.minX + 1.2, Math.min(ROOM.maxX - 1.2, x));
-    const cz = Math.max(ROOM.minZ + 1.2, Math.min(ROOM.maxZ - 1.2, z));
-
-    this.playerTargetPos = new THREE.Vector3(cx, 0, cz);
-
-    if (this.destRing) {
-      this.destRing.position.set(cx, 0.02, cz);
-      this.destRing.material.opacity = 0.9;
-      this.destRing.scale.set(0.6, 0.6, 0.6);
-    }
+  handleDblClick() {
+    this.resetCamera();
   }
 
   handleWheel(event) {
@@ -904,40 +934,15 @@ export class OfficeScene {
   updatePlayerMovement(dt, elapsed) {
     if (!this.player) return;
 
-    let moveX = 0;
-    let moveZ = 0;
-    let moving = false;
-
-    // A. Check Click-to-Move Target
-    if (this.playerTargetPos) {
-      const dx = this.playerTargetPos.x - this.playerPos.x;
-      const dz = this.playerTargetPos.z - this.playerPos.z;
-      const dist = Math.hypot(dx, dz);
-
-      if (dist > 0.15) {
-        moving = true;
-        moveX = dx / dist;
-        moveZ = dz / dist;
-
-        const spd = PLAYER.speed;
-        this.playerPos.x += moveX * spd * dt;
-        this.playerPos.z += moveZ * spd * dt;
-
-        this.targetFacing = facingFromDirection(moveX, moveZ);
-      } else {
-        this.playerTargetPos = null;
-      }
-    }
-
-    this.isMoving = moving;
-
     // Smooth facing rotation
     this.playerFacing = dampAngle(this.playerFacing, this.targetFacing, 14, dt);
     this.player.rotation.y = this.playerFacing;
     this.player.position.set(this.playerPos.x, 0, this.playerPos.z);
 
     // Walk cycle animation
-    if (moving) {
+    if (this.isMoving) {
+      // isMoving will be set to false if no WASD applied this frame
+      this.isMoving = false; // reset for next frame check in applyWASD
       this.walkCycle += dt * 11;
       const swing = Math.sin(this.walkCycle) * 0.45;
 
@@ -946,7 +951,7 @@ export class OfficeScene {
       this.playerParts.armL.rotation.x = -swing * 0.8;
       this.playerParts.armR.rotation.x = swing * 0.8;
 
-      // Slight head & body bob
+      // Subtle head & body bob
       this.playerParts.torso.position.y = 0.85 + Math.abs(Math.sin(this.walkCycle * 2)) * 0.04;
       this.playerParts.head.position.y = 1.35 + Math.abs(Math.sin(this.walkCycle * 2)) * 0.04;
     } else {
@@ -966,25 +971,23 @@ export class OfficeScene {
   applyWASD(screenMoveX, screenMoveZ, isSprint, dt) {
     if (this.disposed || !this.player) return;
 
-    // Cancel click-to-move if user presses WASD
-    this.playerTargetPos = null;
-
     if (Math.abs(screenMoveX) > 0.01 || Math.abs(screenMoveZ) > 0.01) {
-      // Convert screen-relative WASD to world coordinates using the spec's exact rotation
+      // Convert screen-relative WASD to world coordinates
       const world = screenToWorld(screenMoveX, screenMoveZ, CAMERA_YAW);
 
       const spd = PLAYER.speed * (isSprint ? PLAYER.sprint : 1.0);
       const nextX = this.playerPos.x + world.x * spd * dt;
       const nextZ = this.playerPos.z + world.z * spd * dt;
 
-      // Clamp to room bounds
-      this.playerPos.x = Math.max(ROOM.minX + 1.2, Math.min(ROOM.maxX - 1.2, nextX));
-      this.playerPos.z = Math.max(ROOM.minZ + 1.2, Math.min(ROOM.maxZ - 1.2, nextZ));
+      // Obstacle collision detection with wall-sliding (desks, holotable, plants, walls)
+      const resolved = resolveMovement(this.playerPos.x, this.playerPos.z, nextX, nextZ, PLAYER.radius);
+      this.playerPos.x = resolved.x;
+      this.playerPos.z = resolved.z;
 
       this.targetFacing = facingFromDirection(world.x, world.z);
       this.isMoving = true;
 
-      // Walk cycle
+      // Walk cycle animation
       this.walkCycle += dt * (isSprint ? 16 : 11);
       const swing = Math.sin(this.walkCycle) * 0.45;
       this.playerParts.legL.rotation.x = swing;
@@ -1041,16 +1044,16 @@ export class OfficeScene {
     this.camera.zoom = this.zoomLevel;
     this.camera.updateProjectionMatrix();
 
-    // Camera target: focus on selected agent desk or subtle parallax follow of Raffa
+    // Camera target: focus on selected agent desk or Raffa with user pan offset
     let targetLook;
     if (this.focusingOnAgent) {
       targetLook = this.focusingOnAgent;
     } else {
-      // Keep center of the office in view with subtle parallax follow (0.35 factor)
+      // Keep center of the office in view with subtle parallax follow and free user pan
       targetLook = new THREE.Vector3(
-        this.playerPos.x * 0.32,
+        this.playerPos.x * 0.32 + this.userPanOffset.x,
         0,
-        this.playerPos.z * 0.32
+        this.playerPos.z * 0.32 + this.userPanOffset.z
       );
     }
 
@@ -1101,6 +1104,9 @@ export class OfficeScene {
 
     if (this.renderer && this.renderer.domElement) {
       this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
+      window.removeEventListener('pointermove', this.onPointerMove);
+      window.removeEventListener('pointerup', this.onPointerUp);
+      this.renderer.domElement.removeEventListener('dblclick', this.onDblClick);
       this.renderer.domElement.removeEventListener('wheel', this.onWheel);
       window.removeEventListener('resize', this.onResize);
       if (this.renderer.domElement.parentNode) {

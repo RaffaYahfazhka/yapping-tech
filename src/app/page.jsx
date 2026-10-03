@@ -10,6 +10,7 @@ import { REPOS, REPO_MAP } from '../lib/data/repos.js';
 import { TICKETS, TYPE_META, PRIORITY_META } from '../lib/data/tickets.js';
 import { parseFigmaInput, FIGMA_SPEC } from '../lib/data/figma.js';
 import { USER_PLAYLIST } from '../lib/data/userPlaylist.js';
+import SubordinateModal from '../components/SubordinateModal.jsx';
 
 export default function OfficePage() {
   const stageRef = useRef(null);
@@ -19,6 +20,7 @@ export default function OfficePage() {
   const keysDownRef = useRef(new Set());
   const inputLoopRef = useRef(null);
   const handleNextTrackRef = useRef(null);
+  const openAgentWorkspaceRef = useRef(null);
 
   // App & Boot State
   const [booted, setBooted] = useState(false);
@@ -66,7 +68,23 @@ export default function OfficePage() {
   const [isFigmaOpen, setIsFigmaOpen] = useState(false);
   const [isMissionOpen, setIsMissionOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [activeAgentModalId, setActiveAgentModalId] = useState('tara');
   const [interactAgent, setInteractAgent] = useState(null);
+
+  const openAgentWorkspace = useCallback((agentId) => {
+    setActiveAgentModalId(agentId || 'tara');
+    setIsAgentModalOpen(true);
+    setIsFigmaOpen(false);
+    setIsMissionOpen(false);
+    if (sceneRef.current?.focusOn) {
+      sceneRef.current.focusOn(agentId);
+    }
+  }, []);
+
+  useEffect(() => {
+    openAgentWorkspaceRef.current = openAgentWorkspace;
+  }, [openAgentWorkspace]);
 
   // Figma Modal Form
   const [figmaUrl, setFigmaUrl] = useState('https://www.figma.com/design/TRPL-App/Core?node-id=204-12');
@@ -143,11 +161,7 @@ export default function OfficePage() {
         setInteractAgent((prev) => (prev?.id === nearAgent?.id ? prev : nearAgent));
       },
       (agentId) => {
-        if (agentId === 'jajang') {
-          setIsFigmaOpen(true);
-        } else {
-          setIsMissionOpen(true);
-        }
+        openAgentWorkspaceRef.current?.(agentId);
       }
     );
     sceneRef.current = scene;
@@ -201,9 +215,9 @@ export default function OfficePage() {
 
       // Shortcut Keys
       if (e.code === 'KeyF' && !e.repeat) {
-        setIsFigmaOpen((o) => !o);
+        openAgentWorkspaceRef.current?.('jajang');
       } else if (e.code === 'KeyJ' && !e.repeat) {
-        setIsMissionOpen((o) => !o);
+        openAgentWorkspaceRef.current?.('tara');
       } else if (e.code === 'KeyT' && !e.repeat) {
         setIsTerminalOpen((o) => !o);
       } else if (e.code === 'KeyH' && !e.repeat) {
@@ -215,18 +229,15 @@ export default function OfficePage() {
       } else if (e.code === 'KeyM' && !e.repeat) {
         audio.toggleMute();
       } else if (e.code === 'KeyE' && !e.repeat) {
-        // Interact with near agent or open Mission Control
+        // Interact with near agent or open Tara (default PM)
         const near = interactAgentRef.current;
-        if (near) {
-          if (near.id === 'jajang') setIsFigmaOpen(true);
-          else setIsMissionOpen(true);
-        } else {
-          setIsMissionOpen(true);
-        }
+        openAgentWorkspaceRef.current?.(near ? near.id : 'tara');
       } else if (e.code === 'Escape') {
+        setIsAgentModalOpen(false);
         setIsFigmaOpen(false);
         setIsMissionOpen(false);
         setIsHelpOpen(false);
+        setIsMusicModalOpen(false);
       }
     };
 
@@ -512,7 +523,7 @@ export default function OfficePage() {
         </div>
 
         <nav className="header-actions" aria-label="Aksi utama">
-          <button id="btn-figma" className="btn btn-violet" type="button" onClick={() => setIsFigmaOpen(true)}>
+          <button id="btn-figma" className="btn btn-violet" type="button" onClick={() => openAgentWorkspace('jajang')}>
             <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
               <path
                 fill="currentColor"
@@ -521,7 +532,7 @@ export default function OfficePage() {
             </svg>
             Slicing Figma <kbd>F</kbd>
           </button>
-          <button id="btn-mission" className="btn btn-emerald" type="button" onClick={() => setIsMissionOpen(true)}>
+          <button id="btn-mission" className="btn btn-emerald" type="button" onClick={() => openAgentWorkspace('tara')}>
             ⚡ Mission Control <kbd>J</kbd>
           </button>
           <button
@@ -606,10 +617,7 @@ export default function OfficePage() {
           id="interact-prompt"
           className="interact-prompt glass"
           style={{ cursor: 'pointer' }}
-          onClick={() => {
-            if (interactAgent.id === 'jajang') setIsFigmaOpen(true);
-            else setIsMissionOpen(true);
-          }}
+          onClick={() => openAgentWorkspace(interactAgent.id)}
         >
           <kbd className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-xs">E</kbd>
           <span>
@@ -895,10 +903,10 @@ export default function OfficePage() {
           <kbd>⇧ Shift</kbd> Sprint
         </span>
         <span>
-          <kbd>Klik Lantai</kbd> Jalan
+          <kbd>Drag Mouse</kbd> Geser Layar
         </span>
         <span>
-          <kbd>E</kbd> Interaksi
+          <kbd>E</kbd> Interaksi Karyawan
         </span>
         <span>
           <kbd>C</kbd> Center Cam
@@ -1616,6 +1624,26 @@ export default function OfficePage() {
           </div>
         </div>
       )}
+
+      {/* ===================== SUBORDINATE WORKSPACE MODAL ===================== */}
+      <SubordinateModal
+        isOpen={isAgentModalOpen}
+        onClose={() => setIsAgentModalOpen(false)}
+        activeAgentId={activeAgentModalId}
+        setActiveAgentId={setActiveAgentModalId}
+        tickets={useLiveJira && liveTickets.length > 0 ? liveTickets : TICKETS}
+        activeTicket={activeTicket}
+        setActiveTicketKey={setSelectedTicketKey}
+        selectedRepoId={selectedRepoId}
+        setSelectedRepoId={setSelectedRepoId}
+        customRepoPath={customRepoPath}
+        setCustomRepoPath={setCustomRepoPath}
+        figmaUrl={figmaUrl}
+        setFigmaUrl={setFigmaUrl}
+        figmaParseResult={figmaParseResult}
+        onRunFullPipeline={handleExecuteJira}
+        onFocusAgentInScene={(id) => sceneRef.current?.focusOn(id)}
+      />
 
       {/* ===================== BOOT SCREEN ===================== */}
       {!booted && (

@@ -1,4 +1,6 @@
-/* Kantor Raffa Design System — Pure Vanilla CSS */
+@import "tailwindcss";
+
+/* Kantor Raffa Design System — Glassmorphism + Tailwind */
 
 :root {
   --bg-primary: #09090b;
