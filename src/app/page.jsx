@@ -73,6 +73,7 @@ export default function OfficePage() {
   const [ticketTypeFilter, setTicketTypeFilter] = useState('all');
   const [ticketStatusFilter, setTicketStatusFilter] = useState('active'); // 'all' | 'active' (todo - ready prod) | 'To Do' | 'In Progress' | 'QA' | 'Ready Prod'
   const [ticketSearch, setTicketSearch] = useState('');
+  const [missionMobileTab, setMissionMobileTab] = useState('tickets'); // 'repos' | 'tickets' | 'details'
 
   // Fetch live Jira tickets from /api/jira/tickets
   useEffect(() => {
@@ -877,9 +878,34 @@ export default function OfficePage() {
               </button>
             </div>
 
+            {/* Mobile/Tablet Column Selector */}
+            <div className="mission-mobile-tabs">
+              <button
+                type="button"
+                className={`mission-tab-btn ${missionMobileTab === 'repos' ? 'active' : ''}`}
+                onClick={() => setMissionMobileTab('repos')}
+              >
+                📁 1. Repo
+              </button>
+              <button
+                type="button"
+                className={`mission-tab-btn ${missionMobileTab === 'tickets' ? 'active' : ''}`}
+                onClick={() => setMissionMobileTab('tickets')}
+              >
+                🎫 2. Tiket ({filteredTickets.length})
+              </button>
+              <button
+                type="button"
+                className={`mission-tab-btn ${missionMobileTab === 'details' ? 'active' : ''}`}
+                onClick={() => setMissionMobileTab('details')}
+              >
+                📋 3. Detail
+              </button>
+            </div>
+
             <div className="mission-grid">
               {/* Column 1: Repositories & Execution Folder */}
-              <section className="mission-col">
+              <section className={`mission-col col-repos ${missionMobileTab === 'repos' ? 'show-mobile' : ''}`}>
                 <h3 className="col-title">
                   <span className="step-no">1</span> Target Repo / Folder
                 </h3>
@@ -921,7 +947,7 @@ export default function OfficePage() {
               </section>
 
               {/* Column 2: Tickets with Status Range Filter */}
-              <section className="mission-col">
+              <section className={`mission-col col-tickets ${missionMobileTab === 'tickets' ? 'show-mobile' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <h3 className="col-title m-0">
                     <span className="step-no">2</span> Tiket Jira ({filteredTickets.length})
@@ -1000,7 +1026,11 @@ export default function OfficePage() {
                       <div
                         key={t.key}
                         className={`ticket-card ${selectedTicketKey === t.key ? 'active' : ''}`}
-                        onClick={() => setSelectedTicketKey(t.key)}
+                        onClick={() => {
+                          setSelectedTicketKey(t.key);
+                          // Auto open details on mobile upon clicking ticket
+                          if (window.innerWidth < 860) setMissionMobileTab('details');
+                        }}
                       >
                         <div className="ticket-head">
                           <span className="ticket-key mono">{t.key}</span>
@@ -1042,7 +1072,7 @@ export default function OfficePage() {
               </section>
 
               {/* Column 3: Ticket Detail, Figma Link, & Acceptance Criteria */}
-              <section className="mission-col">
+              <section className={`mission-col col-details ${missionMobileTab === 'details' ? 'show-mobile' : ''}`}>
                 <h3 className="col-title">
                   <span className="step-no">3</span> Detail Spesifikasi &amp; Figma
                 </h3>
