@@ -11,13 +11,25 @@ export async function GET(request) {
 
   const { searchParams } = new URL(request.url);
   const projectKey = searchParams.get('project');
+  const onlyMe = searchParams.get('onlyMe') !== 'false'; // default true: filter tickets assigned to user
 
   const authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
 
-  // JQL bounded query: search issues from specific project or recent active
-  const jql = projectKey && projectKey !== 'all'
-    ? `project = "${projectKey}" ORDER BY updated DESC`
-    : `updated >= -180d ORDER BY updated DESC`;
+  // JQL query: prioritize tickets assigned to currentUser()
+  let jql = '';
+  if (onlyMe) {
+    if (projectKey && projectKey !== 'all') {
+      jql = `project = "${projectKey}" AND assignee = currentUser() ORDER BY updated DESC`;
+    } else {
+      jql = `assignee = currentUser() ORDER BY updated DESC`;
+    }
+  } else {
+    if (projectKey && projectKey !== 'all') {
+      jql = `project = "${projectKey}" ORDER BY updated DESC`;
+    } else {
+      jql = `updated >= -180d ORDER BY updated DESC`;
+    }
+  }
 
   try {
     const res = await fetch(`https://${domain}/rest/api/3/search/jql`, {
@@ -29,8 +41,8 @@ export async function GET(request) {
       },
       body: JSON.stringify({
         jql,
-        maxResults: 30,
-        fields: ['summary', 'description', 'issuetype', 'priority', 'status', 'project'],
+        maxResults: 50,
+        fields: ['summary', 'description', 'issuetype', 'priority', 'status', 'project', 'assignee'],
       }),
       cache: 'no-store',
     });

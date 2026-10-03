@@ -929,11 +929,21 @@ export default function OfficePage() {
                           </span>
                         </div>
                         <div className="ticket-summary">{t.summary}</div>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {t.projectKey && (
+                            <span className="chip mono text-[9px] bg-zinc-800 text-indigo-300 border-zinc-700">
+                              {t.projectKey}
+                            </span>
+                          )}
                           <span className="chip text-[10px]" style={{ color: typeMeta.color }}>
                             {typeMeta.icon} {t.type}
                           </span>
-                          <span className="text-[10px] text-zinc-500 mono">{t.points} pts</span>
+                          {t.status && (
+                            <span className={`chip mono text-[9px] ${t.status === 'In Progress' ? 'text-amber-300' : t.status === 'Ready Prod' || t.status === 'Done' ? 'text-emerald-300' : 'text-zinc-400'}`}>
+                              ● {t.status}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-zinc-500 mono ml-auto">{t.points} pts</span>
                         </div>
                       </div>
                     );
