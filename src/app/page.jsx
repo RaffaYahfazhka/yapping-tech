@@ -204,11 +204,11 @@ export default function OfficePage() {
     };
   }, [interactAgent]);
 
-  // Terminal scroll to bottom on new log
-  const logsEndRef = useRef(null);
+  // Terminal scroll to bottom on new log (safe container scroll, never shifts window)
+  const logsPaneRef = useRef(null);
   useEffect(() => {
-    if (termTab === 'logs' && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (termTab === 'logs' && logsPaneRef.current) {
+      logsPaneRef.current.scrollTop = logsPaneRef.current.scrollHeight;
     }
   }, [logs, termTab]);
 
@@ -482,7 +482,7 @@ export default function OfficePage() {
 
         <div className="term-body">
           {/* Logs Tab */}
-          <div className={`term-pane ${termTab === 'logs' ? 'active' : ''}`}>
+          <div ref={logsPaneRef} className={`term-pane ${termTab === 'logs' ? 'active' : ''}`}>
             <div className="term-logs">
               {logs.length === 0 ? (
                 <div className="text-zinc-500 italic py-4">Belum ada output eksekusi misi. Silakan jalankan Slicing Figma atau Mission Control.</div>
@@ -503,7 +503,6 @@ export default function OfficePage() {
                   </div>
                 ))
               )}
-              <div ref={logsEndRef} />
             </div>
           </div>
 

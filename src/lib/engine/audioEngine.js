@@ -79,7 +79,14 @@ export class AudioEngine {
         events: {
           onReady: (event) => {
             this.isReady = true;
-            this.player.setVolume(this.volume);
+            try {
+              this.player.setVolume(this.volume);
+              if (this.isPlaying && this.player.playVideo) {
+                this.player.playVideo();
+              }
+            } catch (err) {
+              console.warn('onReady setup error', err);
+            }
             this.onStateChange({ ready: true, isPlaying: this.isPlaying, volume: this.volume });
           },
           onStateChange: (event) => {
@@ -106,21 +113,23 @@ export class AudioEngine {
   }
 
   play() {
-    if (this.player && this.player.playVideo) {
-      this.player.playVideo();
-      this.isPlaying = true;
-      this.startPolling();
-    } else {
-      this.isPlaying = true;
+    this.isPlaying = true;
+    if (this.player && this.isReady && this.player.playVideo) {
+      try {
+        this.player.playVideo();
+        this.startPolling();
+      } catch (err) {}
     }
     this.onStateChange({ ready: this.isReady, isPlaying: true, volume: this.volume, isMuted: this.isMuted });
   }
 
   pause() {
-    if (this.player && this.player.pauseVideo) {
-      this.player.pauseVideo();
-    }
     this.isPlaying = false;
+    if (this.player && this.isReady && this.player.pauseVideo) {
+      try {
+        this.player.pauseVideo();
+      } catch (err) {}
+    }
     this.stopPolling();
     this.onStateChange({ ready: this.isReady, isPlaying: false, volume: this.volume, isMuted: this.isMuted });
   }

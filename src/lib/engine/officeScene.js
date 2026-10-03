@@ -74,15 +74,15 @@ export class OfficeScene {
     this.scene.background = new THREE.Color('#0c0c0e');
     this.scene.fog = new THREE.FogExp2('#0c0c0e', 0.015);
 
-    // 2. Isometric Orthographic Camera
-    const d = 14;
+    // 2. Isometric Orthographic Camera (d = 10 fills the screen beautifully)
+    const d = 10;
     this.camera = new THREE.OrthographicCamera(
       -d * aspect,
       d * aspect,
       d,
       -d,
       0.1,
-      200
+      300
     );
     this.camera.position.set(CAMERA_OFFSET.x, CAMERA_OFFSET.y, CAMERA_OFFSET.z);
     this.camera.lookAt(0, 0, 0);
@@ -92,7 +92,7 @@ export class OfficeScene {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.container.appendChild(this.renderer.domElement);
 
@@ -163,7 +163,25 @@ export class OfficeScene {
   }
 
   setupArchitecture() {
-    // Floor
+    // 1. Expansive Studio Horizon Floor (fills the entire screen seamlessly)
+    const outerFloorGeo = new THREE.PlaneGeometry(200, 200);
+    const outerFloorMat = new THREE.MeshStandardMaterial({
+      color: '#121216',
+      roughness: 0.9,
+      metalness: 0.05,
+    });
+    const outerFloor = new THREE.Mesh(outerFloorGeo, outerFloorMat);
+    outerFloor.rotation.x = -Math.PI / 2;
+    outerFloor.position.y = -0.32;
+    outerFloor.receiveShadow = true;
+    this.scene.add(outerFloor);
+
+    // Subtle outer architectural grid
+    const outerGrid = new THREE.GridHelper(200, 80, '#26262e', '#18181f');
+    outerGrid.position.y = -0.31;
+    this.scene.add(outerGrid);
+
+    // 2. Main Office Floor (Warm Architectural Studio)
     const floorGeo = new THREE.PlaneGeometry(ROOM.maxX * 2, ROOM.maxZ * 2);
     const floorMat = new THREE.MeshStandardMaterial({
       color: PALETTE.floor,
@@ -180,10 +198,11 @@ export class OfficeScene {
     const slabGeo = new THREE.BoxGeometry(ROOM.maxX * 2 + 1.2, 0.6, ROOM.maxZ * 2 + 1.2);
     const slabMat = new THREE.MeshStandardMaterial({ color: PALETTE.slab, roughness: 0.9 });
     const slab = new THREE.Mesh(slabGeo, slabMat);
-    slab.position.y = -0.31;
+    slab.position.y = -0.3;
+    slab.receiveShadow = true;
     this.scene.add(slab);
 
-    // Architectural floor tile grid lines
+    // Architectural floor tile grid lines inside office
     const gridHelper = new THREE.GridHelper(ROOM.maxX * 2, 32, '#a89f91', '#ded7cc');
     gridHelper.position.y = 0.01;
     this.scene.add(gridHelper);
@@ -244,7 +263,7 @@ export class OfficeScene {
     ctx.fillRect(50, 185, 420, 6);
 
     const tex = new THREE.CanvasTexture(canvas);
-    const signMat = new THREE.MeshBasicMaterial({ map: tex, roughness: 0.9 });
+    const signMat = new THREE.MeshBasicMaterial({ map: tex });
     const signGeo = new THREE.PlaneGeometry(8, 2);
     const signMesh = new THREE.Mesh(signGeo, signMat);
     signMesh.position.set(-6, 2.6, ROOM.minZ + 0.22);
@@ -812,7 +831,7 @@ export class OfficeScene {
     const height = this.container.clientHeight || window.innerHeight;
     const aspect = width / height;
 
-    const d = 14;
+    const d = 10;
     this.camera.left = -d * aspect;
     this.camera.right = d * aspect;
     this.camera.top = d;
@@ -1013,10 +1032,17 @@ export class OfficeScene {
     this.camera.zoom = this.zoomLevel;
     this.camera.updateProjectionMatrix();
 
-    // Camera target: focus on selected agent desk or follow Raffa
-    let targetLook = this.playerPos;
+    // Camera target: focus on selected agent desk or subtle parallax follow of Raffa
+    let targetLook;
     if (this.focusingOnAgent) {
       targetLook = this.focusingOnAgent;
+    } else {
+      // Keep center of the office in view with subtle parallax follow (0.35 factor)
+      targetLook = new THREE.Vector3(
+        this.playerPos.x * 0.32,
+        0,
+        this.playerPos.z * 0.32
+      );
     }
 
     // Smooth lerp camera focus
