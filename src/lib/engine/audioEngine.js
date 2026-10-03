@@ -9,6 +9,7 @@ export class AudioEngine {
     this.containerId = options.containerId || 'yt-player-host';
     this.onStateChange = options.onStateChange || (() => {});
     this.onTimeUpdate = options.onTimeUpdate || (() => {});
+    this.onEnded = options.onEnded || (() => {});
 
     this.player = null;
     this.isReady = false;
@@ -132,6 +133,9 @@ export class AudioEngine {
             } else if (event.data === 2 || event.data === 0) {
               this.isPlaying = false;
               this.stopPolling();
+              if (event.data === 0) {
+                this.onEnded();
+              }
             }
             this.onStateChange({
               ready: this.isReady,

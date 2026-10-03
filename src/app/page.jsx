@@ -9,6 +9,7 @@ import { AGENTS } from '../lib/data/agents.js';
 import { REPOS, REPO_MAP } from '../lib/data/repos.js';
 import { TICKETS, TYPE_META, PRIORITY_META } from '../lib/data/tickets.js';
 import { parseFigmaInput, FIGMA_SPEC } from '../lib/data/figma.js';
+import { USER_PLAYLIST } from '../lib/data/userPlaylist.js';
 
 export default function OfficePage() {
   const stageRef = useRef(null);
@@ -17,6 +18,7 @@ export default function OfficePage() {
   const pipelineRef = useRef(null);
   const keysDownRef = useRef(new Set());
   const inputLoopRef = useRef(null);
+  const handleNextTrackRef = useRef(null);
 
   // App & Boot State
   const [booted, setBooted] = useState(false);
@@ -38,6 +40,9 @@ export default function OfficePage() {
     cover: 'https://i.ytimg.com/vi/sF80I-TQiW0/mqdefault.jpg',
   });
   const [isMusicModalOpen, setIsMusicModalOpen] = useState(false);
+  const [musicModalTab, setMusicModalTab] = useState('playlist'); // 'playlist' | 'custom'
+  const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [musicInputUrl, setMusicInputUrl] = useState('');
   const [musicInputTitle, setMusicInputTitle] = useState('');
   const [musicInputArtist, setMusicInputArtist] = useState('');
@@ -152,6 +157,9 @@ export default function OfficePage() {
       containerId: 'yt-player-host',
       onStateChange: (state) => setAudioState({ ...state }),
       onTimeUpdate: (time) => setAudioTime({ ...time }),
+      onEnded: () => {
+        handleNextTrackRef.current?.();
+      },
     });
     audio.init();
     audioRef.current = audio;
@@ -364,6 +372,41 @@ export default function OfficePage() {
       projectPath: customRepoPath,
     });
   };
+
+  // Handler to select and play a specific track from USER_PLAYLIST
+  const handleSelectPlaylistItem = useCallback((track, index) => {
+    if (!track) return;
+    if (typeof index === 'number') {
+      setCurrentTrackIndex(index);
+    }
+    setCurrentTrack({
+      title: track.title,
+      artist: track.artist,
+      videoId: track.videoId,
+      cover: track.cover,
+    });
+    if (audioRef.current?.loadTrack) {
+      audioRef.current.loadTrack(track.videoId, track.title, track.artist);
+    }
+    setIsMusicModalOpen(false);
+  }, []);
+
+  const handleNextTrack = useCallback(() => {
+    if (!USER_PLAYLIST || USER_PLAYLIST.length === 0) return;
+    const nextIdx = (currentTrackIndex + 1) % USER_PLAYLIST.length;
+    handleSelectPlaylistItem(USER_PLAYLIST[nextIdx], nextIdx);
+  }, [currentTrackIndex, handleSelectPlaylistItem]);
+
+  const handlePrevTrack = useCallback(() => {
+    if (!USER_PLAYLIST || USER_PLAYLIST.length === 0) return;
+    const prevIdx = (currentTrackIndex - 1 + USER_PLAYLIST.length) % USER_PLAYLIST.length;
+    handleSelectPlaylistItem(USER_PLAYLIST[prevIdx], prevIdx);
+  }, [currentTrackIndex, handleSelectPlaylistItem]);
+
+  // Keep ref up to date for onEnded callback
+  useEffect(() => {
+    handleNextTrackRef.current = handleNextTrack;
+  }, [handleNextTrack]);
 
   // Helper to extract YouTube Video ID or Playlist ID from URL
   const handleApplyCustomMusic = (e) => {
@@ -746,6 +789,17 @@ export default function OfficePage() {
           </div>
           <div className="aw-controls">
             <button
+              className="aw-btn"
+              type="button"
+              aria-label="Previous Track"
+              title="Lagu Sebelumnya"
+              onClick={handlePrevTrack}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
+              </svg>
+            </button>
+            <button
               className="aw-btn aw-play"
               type="button"
               aria-label="Play/Pause"
@@ -764,15 +818,40 @@ export default function OfficePage() {
             <button
               className="aw-btn"
               type="button"
+              aria-label="Next Track"
+              title="Lagu Berikutnya"
+              onClick={handleNextTrack}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                <path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
+            </button>
+            <button
+              className="aw-btn"
+              type="button"
+              aria-label="Playlist Kamu"
+              title="Pilih Lagu dari Playlist (58 lagu)"
+              onClick={() => {
+                setMusicModalTab('playlist');
+                setIsMusicModalOpen(true);
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" />
+              </svg>
+            </button>
+            <button
+              className="aw-btn"
+              type="button"
               aria-label="Mute"
               onClick={() => audioRef.current?.toggleMute()}
             >
               {audioState.isMuted ? (
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                   <path d="M4 9v6h4l5 4V5L8 9Zm12.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                   <path d="M4 9v6h4l5 4V5L8 9Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-8.7v2.1a7 7 0 0 1 0 13.2v2.1a9 9 0 0 0 0-17.4Z" />
                 </svg>
               )}
@@ -1305,12 +1384,12 @@ export default function OfficePage() {
       {/* ===================== MODAL: YOUTUBE MUSIC SWITCHER ===================== */}
       {isMusicModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsMusicModalOpen(false)}>
-          <div className="modal modal-sm glass" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
+          <div className="modal modal-md glass" style={{ maxWidth: '640px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head flex-shrink-0">
               <div className="modal-icon violet">🎵</div>
-              <div>
-                <h2>Ganti Lagu / Playlist YouTube</h2>
-                <p>Masukkan link YouTube Music akunmu (lagu atau playlist)</p>
+              <div className="flex-1">
+                <h2>YouTube Music Player</h2>
+                <p>Pilih lagu langsung dari playlist akunmu atau masukkan URL kustom</p>
               </div>
               <button
                 className="btn-icon modal-close"
@@ -1321,77 +1400,219 @@ export default function OfficePage() {
                 ✕
               </button>
             </div>
-            <form className="modal-body" onSubmit={handleApplyCustomMusic}>
-              <label className="field">
-                <span className="field-label">Link YouTube / YouTube Music URL</span>
-                <input
-                  className="input mono text-xs"
-                  placeholder="https://music.youtube.com/playlist?list=... atau /watch?v=..."
-                  value={musicInputUrl}
-                  onChange={(e) => setMusicInputUrl(e.target.value)}
-                  required
-                />
-                <small className="mono text-[10px] text-zinc-500">
-                  Bisa berupa link lagu, playlist publik/unlisted akunmu, atau Video ID.
-                </small>
-              </label>
 
-              <div className="grid grid-cols-2 gap-2">
-                <label className="field">
-                  <span className="field-label">Judul (Opsional)</span>
-                  <input
-                    className="input text-xs"
-                    placeholder="Judul Playlist / Lagu"
-                    value={musicInputTitle}
-                    onChange={(e) => setMusicInputTitle(e.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span className="field-label">Artist (Opsional)</span>
-                  <input
-                    className="input text-xs"
-                    placeholder="Nama Playlist / Artist"
-                    value={musicInputArtist}
-                    onChange={(e) => setMusicInputArtist(e.target.value)}
-                  />
-                </label>
-              </div>
+            {/* Modal Tabs */}
+            <div className="flex border-b border-subtle px-4 pt-2 gap-4 flex-shrink-0">
+              <button
+                type="button"
+                className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+                  musicModalTab === 'playlist'
+                    ? 'border-emerald-500 text-emerald-400'
+                    : 'border-transparent text-zinc-400 hover:text-primary'
+                }`}
+                onClick={() => setMusicModalTab('playlist')}
+              >
+                <span>🎶 Playlist Kamu</span>
+                <span className="badge badge-emerald text-[10px] py-0 px-1.5">{USER_PLAYLIST.length} Lagu</span>
+              </button>
+              <button
+                type="button"
+                className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+                  musicModalTab === 'custom'
+                    ? 'border-emerald-500 text-emerald-400'
+                    : 'border-transparent text-zinc-400 hover:text-primary'
+                }`}
+                onClick={() => setMusicModalTab('custom')}
+              >
+                <span>🔗 Masukkan Link Lain</span>
+              </button>
+            </div>
 
-              <div className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 text-[11px] text-zinc-500">
-                <b className="text-purple-500 block mb-1">💡 Tips Link Playlist Akunmu:</b>
-                Pastikan playlist di YouTube Music kamu diset ke <b>Unlisted</b> atau <b>Public</b> agar YouTube IFrame API dapat memutarnya di dalam aplikasi.
-              </div>
+            {/* Tab 1: User's Playlist Tracks Selector */}
+            {musicModalTab === 'playlist' && (
+              <div className="flex flex-col flex-1 min-h-0 p-4 gap-3">
+                {/* Search Bar & Stats */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      className="input text-xs w-full pl-8"
+                      placeholder="Cari judul lagu atau nama DJ di playlist..."
+                      value={playlistSearchQuery}
+                      onChange={(e) => setPlaylistSearchQuery(e.target.value)}
+                    />
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">🔍</span>
+                    {playlistSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setPlaylistSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm text-xs flex-shrink-0"
+                    title="Putar dari awal playlist"
+                    onClick={() => handleSelectPlaylistItem(USER_PLAYLIST[0], 0)}
+                  >
+                    ▶ Putar Awal
+                  </button>
+                </div>
 
-              {/* Quick Presets */}
-              <div className="flex flex-col gap-1.5">
-                <span className="field-label text-[10px] uppercase font-bold text-zinc-500">Preset Rekomendasi:</span>
-                <div className="flex flex-col gap-1">
-                  {[
-                    { title: 'CHON — Pitch Dark', artist: 'CHON (Math Rock)', url: 'https://www.youtube.com/watch?v=sF80I-TQiW0' },
-                    { title: 'Lofi Girl — Beats to relax/study to', artist: 'Lofi Girl', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
-                    { title: 'Synthwave Coding Chill', artist: 'ChilledCow', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
-                  ].map((preset, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className="p-1.5 rounded-md border border-subtle text-left text-xs hover:border-emerald-500 flex items-center justify-between"
-                      onClick={() => {
-                        setMusicInputUrl(preset.url);
-                        setMusicInputTitle(preset.title);
-                        setMusicInputArtist(preset.artist);
-                      }}
-                    >
-                      <span className="font-semibold text-primary">{preset.title}</span>
-                      <span className="text-[10px] text-zinc-500 mono">{preset.artist}</span>
-                    </button>
-                  ))}
+                {/* Playlist Scroll Area */}
+                <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1.5 max-h-[380px]">
+                  {USER_PLAYLIST.filter((track) =>
+                    !playlistSearchQuery ||
+                    track.title.toLowerCase().includes(playlistSearchQuery.toLowerCase()) ||
+                    track.artist.toLowerCase().includes(playlistSearchQuery.toLowerCase())
+                  ).map((track) => {
+                    const originalIdx = USER_PLAYLIST.findIndex((t) => t.videoId === track.videoId);
+                    const isSelected = currentTrack.videoId === track.videoId;
+
+                    return (
+                      <div
+                        key={track.videoId + originalIdx}
+                        onClick={() => handleSelectPlaylistItem(track, originalIdx)}
+                        className={`group flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400 shadow-sm'
+                            : 'border-subtle hover:border-zinc-500/40 hover:bg-white/5 text-primary'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <span className="w-5 text-center text-[11px] mono text-zinc-500 flex-shrink-0">
+                            {isSelected && audioState.isPlaying ? '🔊' : originalIdx + 1}
+                          </span>
+                          <div className="w-10 h-10 rounded-md overflow-hidden bg-black/40 flex-shrink-0 border border-white/10 relative">
+                            <img
+                              src={track.cover}
+                              alt={track.title}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            {isSelected && audioState.isPlaying && (
+                              <div className="absolute inset-0 bg-emerald-950/60 flex items-center justify-center">
+                                <span className="text-emerald-400 text-xs animate-pulse">▶</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold truncate leading-tight group-hover:text-emerald-400">
+                              {track.title}
+                            </div>
+                            <div className="text-[10px] text-zinc-500 mono truncate mt-0.5">
+                              {track.artist}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          {isSelected && (
+                            <span className="badge badge-emerald text-[9px] py-0.5 px-1.5 hidden sm:inline-block">
+                              {audioState.isPlaying ? 'Sedang Diputar' : 'Terpilih'}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className={`btn btn-xs px-2.5 py-1 text-[11px] ${
+                              isSelected && audioState.isPlaying ? 'btn-emerald' : 'btn-outline'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isSelected) {
+                                audioRef.current?.togglePlay();
+                              } else {
+                                handleSelectPlaylistItem(track, originalIdx);
+                              }
+                            }}
+                          >
+                            {isSelected && audioState.isPlaying ? '⏸ Pause' : '▶ Play'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+            )}
 
-              <button type="submit" className="btn btn-emerald btn-lg w-full mt-2">
-                ▶ Terapkan &amp; Putar Musik
-              </button>
-            </form>
+            {/* Tab 2: Custom URL Form */}
+            {musicModalTab === 'custom' && (
+              <form className="modal-body" onSubmit={handleApplyCustomMusic}>
+                <label className="field">
+                  <span className="field-label">Link YouTube / YouTube Music URL</span>
+                  <input
+                    className="input mono text-xs"
+                    placeholder="https://music.youtube.com/playlist?list=... atau /watch?v=..."
+                    value={musicInputUrl}
+                    onChange={(e) => setMusicInputUrl(e.target.value)}
+                    required
+                  />
+                  <small className="mono text-[10px] text-zinc-500">
+                    Bisa berupa link lagu, playlist publik/unlisted akunmu, atau Video ID.
+                  </small>
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="field">
+                    <span className="field-label">Judul (Opsional)</span>
+                    <input
+                      className="input text-xs"
+                      placeholder="Judul Playlist / Lagu"
+                      value={musicInputTitle}
+                      onChange={(e) => setMusicInputTitle(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Artist (Opsional)</span>
+                    <input
+                      className="input text-xs"
+                      placeholder="Nama Playlist / Artist"
+                      value={musicInputArtist}
+                      onChange={(e) => setMusicInputArtist(e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <div className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 text-[11px] text-zinc-500">
+                  <b className="text-purple-500 block mb-1">💡 Tips Link Playlist Akunmu:</b>
+                  Pastikan playlist di YouTube Music kamu diset ke <b>Unlisted</b> atau <b>Public</b> agar YouTube IFrame API dapat memutarnya di dalam aplikasi.
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="field-label text-[10px] uppercase font-bold text-zinc-500">Preset Rekomendasi:</span>
+                  <div className="flex flex-col gap-1">
+                    {[
+                      { title: 'CHON — Pitch Dark', artist: 'CHON (Math Rock)', url: 'https://www.youtube.com/watch?v=sF80I-TQiW0' },
+                      { title: 'Lofi Girl — Beats to relax/study to', artist: 'Lofi Girl', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
+                      { title: 'Synthwave Coding Chill', artist: 'ChilledCow', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
+                    ].map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="p-1.5 rounded-md border border-subtle text-left text-xs hover:border-emerald-500 flex items-center justify-between"
+                        onClick={() => {
+                          setMusicInputUrl(preset.url);
+                          setMusicInputTitle(preset.title);
+                          setMusicInputArtist(preset.artist);
+                        }}
+                      >
+                        <span className="font-semibold text-primary">{preset.title}</span>
+                        <span className="text-[10px] text-zinc-500 mono">{preset.artist}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button type="submit" className="btn btn-emerald btn-lg w-full mt-2">
+                  ▶ Terapkan &amp; Putar Musik
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
