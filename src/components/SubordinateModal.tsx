@@ -538,14 +538,49 @@ export default function SubordinateModal({
   // Vani: QA Regression State
   const [precisionScore, setPrecisionScore] = useState(99.8);
 
-  // Reno: Git Flow & GitLab MR State
-  const [baseBranch, setBaseBranch] = useState('dev');
+  // Reno: Git Flow & Remote Integration State
+  const [baseBranch, setBaseBranch] = useState('main');
   const [targetBranch, setTargetBranch] = useState('dev');
   const [customFeatureName, setCustomFeatureName] = useState('');
-  const [gitlabHost, setGitlabHost] = useState('https://gitlab.com');
-  const [gitlabProject, setGitlabProject] = useState('raffayahfazhka/yapping-techflow');
+  const [detectedRemoteUrl, setDetectedRemoteUrl] = useState<string | null>(null);
+  const [detectedProvider, setDetectedProvider] = useState<string>('Git Remote');
+  const [remoteEditUrl, setRemoteEditUrl] = useState('');
+  const [isDetectingRemote, setIsDetectingRemote] = useState(false);
+  const [isExecutingGitFlow, setIsExecutingGitFlow] = useState(false);
+  const [executionResult, setExecutionResult] = useState<{
+    success: boolean;
+    message: string;
+    logs?: string[];
+  } | null>(null);
   const [copiedGitCmd, setCopiedGitCmd] = useState(false);
   const [mrCreated, setMrCreated] = useState(false);
+
+  // Auto-detect git remote url for current workspace
+  useEffect(() => {
+    async function detectGitRemote() {
+      setIsDetectingRemote(true);
+      try {
+        const pathQuery = customRepoPath ? `?path=${encodeURIComponent(customRepoPath)}` : '';
+        const res = await fetch(`/api/repo/local-inspect${pathQuery}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.remoteWebUrl || data.remoteUrl) {
+            const url = data.remoteWebUrl || data.remoteUrl;
+            setDetectedRemoteUrl(url);
+            setRemoteEditUrl(url);
+            setDetectedProvider(data.remoteProvider || 'GitHub');
+          }
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        setIsDetectingRemote(false);
+      }
+    }
+    if (activeAgentId === 'reno' || isOpen) {
+      detectGitRemote();
+    }
+  }, [activeAgentId, customRepoPath, isOpen]);
 
   useEffect(() => {
     setMounted(true);
@@ -595,6 +630,71 @@ git push origin ${featureBranchName} ${releaseBranchName} ${targetBranch}`;
     navigator.clipboard.writeText(gitFlowCommand);
     setCopiedGitCmd(true);
     setTimeout(() => setCopiedGitCmd(false), 2000);
+  };
+
+  const handleConnectRemote = async () => {
+    if (!remoteEditUrl.trim()) return;
+    try {
+      const res = await fetch('/api/repo/local-inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folderPath: customRepoPath,
+          action: 'set_remote',
+          remoteUrl: remoteEditUrl.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.remoteWebUrl || data.remoteUrl) {
+        setDetectedRemoteUrl(data.remoteWebUrl || data.remoteUrl);
+        setDetectedProvider(data.remoteProvider || 'GitHub');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleExecuteDirectGitFlow = async () => {
+    setIsExecutingGitFlow(true);
+    setExecutionResult(null);
+    try {
+      const res = await fetch('/api/repo/local-inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folderPath: customRepoPath,
+          action: 'execute_git_flow',
+          baseBranch,
+          featureBranch: featureBranchName,
+          releaseBranch: releaseBranchName,
+          targetBranch,
+          commitMessage: `feat(${activeTicket?.key || 'TECH-777'}): autonomous git flow pipeline execution`,
+          pushToRemote: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setExecutionResult({
+          success: true,
+          message: data.message || 'Git Flow berhasil dieksekusi langsung!',
+          logs: data.logs || [],
+        });
+        setMrCreated(true);
+      } else {
+        setExecutionResult({
+          success: false,
+          message: data.error || 'Gagal mengeksekusi Git Flow',
+          logs: data.logs || [],
+        });
+      }
+    } catch (err: any) {
+      setExecutionResult({
+        success: false,
+        message: err.message || 'Terjadi kesalahan sistem',
+      });
+    } finally {
+      setIsExecutingGitFlow(false);
+    }
   };
 
   const handleCopyTailwindCode = () => {
@@ -1403,6 +1503,53 @@ export default function ${activeTicket?.key?.replace('-', '') || 'Feature'}Compo
                   </div>
                 </div>
 
+                {/* Git Remote Integration Banner */}
+                <div style={{ padding: '14px', borderRadius: '12px', background: '#13151c', border: '1px solid rgba(34, 211, 238, 0.2)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', color: '#22d3ee', fontWeight: 700 }}>
+                        🔗 Remote Git Repository
+                      </span>
+                      {detectedRemoteUrl ? (
+                        <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                          ✓ Terdeteksi ({detectedProvider})
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                          Belum Terhubung
+                        </span>
+                      )}
+                    </div>
+                    {isDetectingRemote && <span style={{ fontSize: '11px', color: '#71717a' }}>Mendeteksi remote…</span>}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      value={remoteEditUrl}
+                      placeholder="https://github.com/RaffaYahfazhka/yapping-tech.git"
+                      onChange={(e) => setRemoteEditUrl(e.target.value)}
+                      style={{ flex: 1, minWidth: '240px', background: '#1c1e27', color: '#67e8f9', border: '1px solid rgba(34, 211, 238, 0.3)', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', fontFamily: 'monospace', outline: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleConnectRemote}
+                      style={{ padding: '7px 14px', borderRadius: '8px', background: 'rgba(34, 211, 238, 0.15)', border: '1px solid #22d3ee', color: '#e0f2fe', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Hubungkan Remote
+                    </button>
+                  </div>
+
+                  {detectedRemoteUrl && (
+                    <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                      Remote URL aktif:{' '}
+                      <a href={detectedRemoteUrl} target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'underline', fontFamily: 'monospace' }}>
+                        {detectedRemoteUrl}
+                      </a>
+                    </div>
+                  )}
+                </div>
+
                 <div className={styles.codePanel}>
                   <div className={styles.codePanelHeader}>
                     <span>Git Flow Terminal Command</span>
@@ -1419,23 +1566,39 @@ export default function ${activeTicket?.key?.replace('-', '') || 'Feature'}Compo
                   </pre>
                 </div>
 
-                {mrCreated && (
-                  <div style={{ padding: '12px 16px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#6ee7b7', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>🎉 Merge Request Berhasil Dibuat: <b>MR !142 ({releaseBranchName} ➔ {targetBranch})</b></span>
-                    <span style={{ fontSize: '10px', background: '#10b981', color: '#000000', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>Jira Closed</span>
+                {executionResult && (
+                  <div style={{ padding: '12px 16px', borderRadius: '12px', background: executionResult.success ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${executionResult.success ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`, color: executionResult.success ? '#6ee7b7' : '#fca5a5', fontSize: '12px' }}>
+                    <div style={{ fontWeight: 800, marginBottom: '6px' }}>{executionResult.message}</div>
+                    {executionResult.logs && executionResult.logs.length > 0 && (
+                      <pre style={{ margin: 0, padding: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', fontSize: '11px', fontFamily: 'monospace', maxHeight: '120px', overflowY: 'auto' }}>
+                        {executionResult.logs.join('\n')}
+                      </pre>
+                    )}
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  className={styles.nextStageBtn('#0891b2', '#22d3ee')}
-                  onClick={() => {
-                    setMrCreated(true);
-                    handleCopyGitCommand();
-                  }}
-                >
-                  <span>🦊 Buat GitLab Merge Request & Selesaikan Tiket</span>
-                </button>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    disabled={isExecutingGitFlow}
+                    className={styles.nextStageBtn('#0891b2', '#22d3ee')}
+                    style={{ flex: 1, minWidth: '220px', opacity: isExecutingGitFlow ? 0.7 : 1 }}
+                    onClick={handleExecuteDirectGitFlow}
+                  >
+                    <span>{isExecutingGitFlow ? '⏳ Menjalankan Git Flow & Push…' : '🦊 Eksekusi Langsung Git Flow & Push ke Remote'}</span>
+                  </button>
+
+                  {detectedRemoteUrl && (
+                    <a
+                      href={`${detectedRemoteUrl.replace(/\.git$/, '')}/pull/new/${releaseBranchName}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ padding: '12px 18px', borderRadius: '14px', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#ffffff', textDecoration: 'none', fontWeight: 700, fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      Buka Pull/Merge Request ↗
+                    </a>
+                  )}
+                </div>
               </div>
             </>
           )}

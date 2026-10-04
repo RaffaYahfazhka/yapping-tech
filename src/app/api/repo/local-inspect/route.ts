@@ -50,6 +50,10 @@ function inspectDirectory(targetPath) {
   let isDevBranch = false;
   let hasDevOrDevelopmentBranch = false;
   let uncommittedFiles = 0;
+  let remoteUrl = null;
+  let remoteWebUrl = null;
+  let remoteProvider = null;
+  let remoteRepoName = null;
 
   if (isGit) {
     currentBranch = runGit('git branch --show-current', resolved) || runGit('git rev-parse --abbrev-ref HEAD', resolved) || 'unknown';
@@ -67,6 +71,27 @@ function inspectDirectory(targetPath) {
 
     const statusOutput = runGit('git status --porcelain', resolved) || '';
     uncommittedFiles = statusOutput.split('\n').filter((l) => l.trim().length > 0).length;
+
+    // Detect Git Remote URL (e.g. GitHub or GitLab)
+    remoteUrl = runGit('git config --get remote.origin.url', resolved) || null;
+
+    if (remoteUrl) {
+      // Normalize git@github.com:User/Repo.git to https://github.com/User/Repo
+      let cleanUrl = remoteUrl.trim();
+      if (cleanUrl.startsWith('git@') && cleanUrl.includes(':')) {
+        const parts = cleanUrl.slice(4).split(':');
+        cleanUrl = `https://${parts[0]}/${parts[1]}`;
+      }
+      cleanUrl = cleanUrl.replace(/\.git$/, '');
+      remoteWebUrl = cleanUrl;
+
+      if (cleanUrl.includes('github.com')) remoteProvider = 'GitHub';
+      else if (cleanUrl.includes('gitlab.com')) remoteProvider = 'GitLab';
+      else remoteProvider = 'Git Remote';
+
+      const pathSegments = cleanUrl.split('/').filter(Boolean);
+      remoteRepoName = pathSegments.slice(-2).join('/');
+    }
   }
 
   // Check Package.json
@@ -113,6 +138,10 @@ function inspectDirectory(targetPath) {
     hasDevOrDevelopmentBranch,
     allBranches,
     uncommittedFiles,
+    remoteUrl,
+    remoteWebUrl,
+    remoteProvider,
+    remoteRepoName,
     projectType,
     packageInfo,
     branchStatus,
@@ -205,9 +234,97 @@ export async function POST(request) {
       });
     }
 
+    if (action === 'set_remote') {
+      const { remoteUrl: newRemoteUrl } = body;
+      if (!newRemoteUrl) {
+        return NextResponse.json({ error: 'remoteUrl wajib diisi' }, { status: 400 });
+      }
+      try {
+        // Check if origin exists
+        const currentOrigin = runGit('git remote get-url origin', resolved);
+        if (currentOrigin) {
+          execSync(`git remote set-url origin "${newRemoteUrl}"`, { cwd: resolved, encoding: 'utf8' });
+        } else {
+          execSync(`git remote add origin "${newRemoteUrl}"`, { cwd: resolved, encoding: 'utf8' });
+        }
+        const updated = inspectDirectory(resolved);
+        return NextResponse.json({
+          success: true,
+          message: `Remote origin berhasil dihubungkan ke ${newRemoteUrl}`,
+          ...updated,
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
+    if (action === 'execute_git_flow') {
+      const {
+        baseBranch: base = 'main',
+        featureBranch = 'feat/task',
+        releaseBranch = 'rc/task',
+        targetBranch: target = 'dev',
+        commitMessage = 'feat: autonomous pipeline execution',
+        pushToRemote = true,
+      } = body;
+
+      const logs: string[] = [];
+      const runStep = (cmd: string) => {
+        logs.push(`$ ${cmd}`);
+        try {
+          const out = execSync(cmd, { cwd: resolved, encoding: 'utf8', timeout: 15000 });
+          if (out && out.trim()) logs.push(out.trim());
+          return { success: true, output: out };
+        } catch (err: any) {
+          const errOutput = (err.stdout || '') + (err.stderr || err.message);
+          logs.push(`⚠️ ${errOutput.trim()}`);
+          return { success: false, error: errOutput };
+        }
+      };
+
+      // 1. Check working directory status
+      runStep(`git checkout ${base}`);
+      runStep(`git pull origin ${base}`);
+      
+      // 2. Create feature branch
+      runStep(`git checkout -B ${featureBranch}`);
+      
+      // 3. Stage & commit
+      runStep(`git add .`);
+      runStep(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`);
+
+      // 4. Create release branch and merge feature
+      runStep(`git checkout -B ${releaseBranch}`);
+      runStep(`git merge ${featureBranch}`);
+
+      // 5. Checkout target branch and merge release branch
+      runStep(`git checkout -B ${target}`);
+      runStep(`git merge ${releaseBranch}`);
+
+      // 6. Push to remote if origin is configured and push requested
+      let pushResult = null;
+      if (pushToRemote) {
+        const remoteCheck = runGit('git config --get remote.origin.url', resolved);
+        if (remoteCheck) {
+          pushResult = runStep(`git push origin ${featureBranch} ${releaseBranch} ${target}`);
+        } else {
+          logs.push('ℹ️ Remote origin tidak terkonfigurasi, push dilewati.');
+        }
+      }
+
+      const updated = inspectDirectory(resolved);
+      return NextResponse.json({
+        success: true,
+        message: `Git Flow ${featureBranch} ➔ ${releaseBranch} ➔ ${target} berhasil dieksekusi!`,
+        logs,
+        pushResult,
+        ...updated,
+      });
+    }
+
     const inspection = inspectDirectory(resolved);
     return NextResponse.json(inspection);
-  } catch (err) {
+  } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

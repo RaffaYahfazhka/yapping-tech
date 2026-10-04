@@ -438,6 +438,21 @@ export default function LocalFolderSelector({
             </div>
           </div>
 
+          {/* Remote origin link if detected */}
+          {inspectionResult.remoteWebUrl && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', fontSize: '11px' }}>
+              <span style={{ color: '#38bdf8' }}>🔗 {inspectionResult.remoteProvider || 'Git Remote'}:</span>
+              <a
+                href={inspectionResult.remoteWebUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#67e8f9', textDecoration: 'underline', wordBreak: 'break-all', fontFamily: 'monospace' }}
+              >
+                {inspectionResult.remoteWebUrl}
+              </a>
+            </div>
+          )}
+
           {!inspectionResult.isDevBranch && inspectionResult.isGitRepo && (
             <div className={styles.branchWarningBox}>
               <span>Standar pengerjaan tiket Jira mensyaratkan branch <b>dev</b> atau <b>development</b>.</span>

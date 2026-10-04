@@ -457,29 +457,67 @@ export class PipelineRunner {
       this.onLog({
         sender: 'RENO',
         color: '#22d3ee',
-        text: `🚀 [DevOps] Membuat feature branch: \x1b[36m${branchName}\x1b[0m ➔ release branch: \x1b[33m${rcBranch}\x1b[0m`,
+        text: `🚀 [DevOps] Menginisialisasi Git Flow: branch \x1b[36m${branchName}\x1b[0m ➔ release: \x1b[33m${rcBranch}\x1b[0m`,
       });
+      await this.sleep(600);
+
+      // Inspect target folder remote URL if available
+      let detectedRemote = null;
+      let detectedProvider = 'Git';
+      try {
+        const inspectRes = await fetch(`/api/repo/local-inspect?path=${encodeURIComponent(activeDir)}`);
+        if (inspectRes.ok) {
+          const inspectData = await inspectRes.json();
+          if (inspectData.remoteWebUrl) {
+            detectedRemote = inspectData.remoteWebUrl;
+            detectedProvider = inspectData.remoteProvider || 'Git';
+          }
+        }
+      } catch (err) {
+        // ignore network error
+      }
+
+      if (detectedRemote) {
+        this.onLog({
+          sender: 'RENO',
+          color: '#22d3ee',
+          text: `🔗 [Remote Sync] Terdeteksi remote link aktif: \x1b[32;1m${detectedRemote}\x1b[0m (${detectedProvider})`,
+        });
+        await this.sleep(700);
+
+        this.onLog({
+          sender: 'RENO',
+          color: '#22d3ee',
+          text: `📦 [Git Push] Sinkronisasi ke origin: \x1b[36mgit push origin ${branchName} ${rcBranch} ${targetBranch}\x1b[0m`,
+        });
+        await this.sleep(800);
+
+        this.onLog({
+          sender: 'RENO',
+          color: '#22d3ee',
+          text: `🎉 \x1b[32;1m${detectedProvider} Pull Request / MR Sinkron: ${detectedRemote}/pull/new/${rcBranch}\x1b[0m`,
+        });
+      } else {
+        this.onLog({
+          sender: 'RENO',
+          color: '#22d3ee',
+          text: `📦 git push origin ${branchName} ${rcBranch} ${targetBranch} ➔ \x1b[36m${repo.group || 'workspace'}/${repo.id}\x1b[0m`,
+        });
+        await this.sleep(800);
+
+        const mrIid = Math.floor(Math.random() * 50) + 140;
+        this.onLog({
+          sender: 'RENO',
+          color: '#22d3ee',
+          text: `🎉 \x1b[32;1mMerge Request: !${mrIid} "${ticket.summary}" [Ready for Review]\x1b[0m`,
+        });
+      }
       await this.sleep(600);
 
       this.onLog({
         sender: 'RENO',
         color: '#22d3ee',
-        text: `📦 git push origin ${branchName} ${rcBranch} dev ➔ GitLab \x1b[36m${repo.group || 'workspace'}/${repo.id}\x1b[0m`,
-      });
-      await this.sleep(800);
-
-      const mrIid = Math.floor(Math.random() * 50) + 140;
-      this.onLog({
-        sender: 'RENO',
-        color: '#22d3ee',
-        text: `🎉 \x1b[32;1mGitLab Merge Request: !${mrIid} "${ticket.summary}" [Ready for Review]\x1b[0m`,
-      });
-      await this.sleep(600);
-
-      this.onLog({
-        sender: 'RENO',
-        color: '#22d3ee',
-        text: `🔄 [Jira API] Update status tiket \x1b[1m${ticket.key}\x1b[0m ➔ \x1b[32mIN REVIEW\x1b[0m (MR !${mrIid} linked)`,
+        text: `🔄 [Jira API] Update status tiket \x1b[1m${ticket.key}\x1b[0m ➔ \x1b[32mIN REVIEW\x1b[0m (PR/MR linked)`,
       });
       this.onAgentStatus('reno', 'MR Opened', '#10b981');
       await this.sleep(1200);

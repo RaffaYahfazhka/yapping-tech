@@ -99,33 +99,30 @@ PRD ini merumuskan perbaikan menyeluruh (overhaul) pada:
 
 ---
 
-### Feature 5: Flexible Git Flow Automation pada Reno (DevOps)
+### Feature 5: Flexible Git Flow Automation & Remote Git Detection pada Reno (DevOps)
 #### Problem
-- Saat ini Reno hardcode checkout dari `main` dan merilis ke branch `rc/v1.4.0` yang statis, tidak fleksibel terhadap alur kerja branch nyata.
+- Reno sebelumnya tidak mendeteksi remote link Git repositori (`remote.origin.url`), sehingga user tidak tahu apakah branch yang di-push akan tersinkronisasi ke repository nyata (seperti GitHub `https://github.com/RaffaYahfazhka/yapping-tech`).
+- Eksekusi hanya berupa simulasi statis / copy-paste command tanpa tombol eksekusi langsung yang terintegrasi ke engine git lokal.
 
 #### Requirements
-1. **Dynamic Base & Target Branch**:
-   - Input/Dropdown **Base Branch**: Pilihan cepat `dev`, `development`, `main`, atau custom branch name.
+1. **Auto-Detection Git Remote Repository**:
+   - Reno secara otomatis mendeteksi konfigurasi link Git repositori dari folder lokal komputer (misal: `https://github.com/RaffaYahfazhka/yapping-tech.git`).
+   - Mendeteksi provider remote (`GitHub` atau `GitLab`) dan status sinkronisasinya.
+   - Menyediakan input URL remote untuk menghubungkan atau mengganti link remote secara instan.
+2. **Dynamic Base & Target Branch**:
+   - Input/Dropdown **Base Branch**: Pilihan cepat `main`, `dev`, `development`, atau custom branch name.
    - Input/Dropdown **Target Branch**: Pilihan cepat `dev`, `development`, `staging`, `main`.
-2. **Dynamic Release Branch Convention**:
+3. **Dynamic Release Branch Convention**:
    - Release candidate branch otomatis mengikuti feature branch yang sedang dikerjakan.
-   - Aturan: `feat/{ticketKey}` ➔ Release Branch: `rc/{ticketKey}`.
-   - *Contoh*:
-     - Feature Branch: `feat/fds336` (atau `feat/TECH-101`)
-     - Release Branch: `rc/fds336` (atau `rc/TECH-101`)
-3. **Automated Command Generator & GitLab MR Trigger**:
-   - Generator script git terbarukan secara real-time:
-     ```bash
-     cd "<project-folder>"
-     git checkout <baseBranch> && git pull origin <baseBranch>
-     git checkout -b feat/<ticketKey>
-     git add . && git commit -m "feat(<ticketKey>): implement autonomous feature pipeline"
-     git checkout -b rc/<ticketKey>
-     git merge feat/<ticketKey>
-     git checkout <targetBranch> && git merge rc/<ticketKey>
-     git push origin feat/<ticketKey> rc/<ticketKey> <targetBranch>
-     ```
-   - Tombol "Copy Command" dan simulasi pembuatan Merge Request GitLab ke `<targetBranch>`.
+   - Aturan: `feat/{ticketKey}` ➔ Release Branch: `rc/{ticketKey}` (contoh: `feat/tech-777` ➔ `rc/tech-777`).
+4. **Direct Git Flow Execution & Push to Remote**:
+   - Reno menyediakan tombol **"🦊 Eksekusi Langsung Git Flow & Push ke Remote"** yang langsung menjalankan:
+     - Checkout & pull base branch
+     - Create & commit feature branch
+     - Create & merge release candidate branch (`rc/`)
+     - Checkout target branch & merge release branch
+     - Push ke remote origin GitHub / GitLab (`git push origin feat/... rc/... dev`)
+   - Menampilkan link langsung menuju halaman pembuatan Pull Request / Merge Request di GitHub/GitLab.
 
 ---
 
@@ -175,9 +172,11 @@ PRD ini merumuskan perbaikan menyeluruh (overhaul) pada:
 4. **Local Repository Selector**:
    - [ ] User dapat memilih folder via dialog pemilihan file/folder lokal komputer (tanpa wajib ketik path manual).
    - [ ] Sistem memvalidasi branch aktif (`dev` / `development`) secara otomatis.
-5. **Reno Git Flow**:
+5. **Reno Git Flow & Remote Integration**:
    - [ ] Base branch dan target branch dapat dipilih fleksibel.
    - [ ] Release branch secara otomatis terisi format `rc/{namaFeatureBranch}` (misal: `rc/fds336`).
+   - [ ] Remote link git repositori (`https://github.com/RaffaYahfazhka/yapping-tech`) otomatis terdeteksi dari folder lokal aktif.
+   - [ ] Reno dapat mengeksekusi langsung Git Flow dan melakukan push ke remote origin dengan 1 klik.
 6. **Executable Mockup**:
    - [ ] Terdapat 1 skenario tiket siap uji (`TECH-777`) yang dapat langsung dijalankan dalam folder proyek `yapping-techflow`.
 7. **Build Validation**:
