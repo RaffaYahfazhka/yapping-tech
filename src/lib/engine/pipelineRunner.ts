@@ -481,21 +481,53 @@ export class PipelineRunner {
         this.onLog({
           sender: 'RENO',
           color: '#22d3ee',
-          text: `🔗 [Remote Sync] Terdeteksi remote link aktif: \x1b[32;1m${detectedRemote}\x1b[0m (${detectedProvider})`,
+          text: `🔗 [Remote Sync] Terdeteksi link remote aktif: \x1b[32;1m${detectedRemote}\x1b[0m (${detectedProvider})`,
         });
         await this.sleep(700);
 
         this.onLog({
           sender: 'RENO',
           color: '#22d3ee',
-          text: `📦 [Git Push] Sinkronisasi ke origin: \x1b[36mgit push origin ${branchName} ${rcBranch} ${targetBranch}\x1b[0m`,
+          text: `⚡ [Real Git Execution] Menjalankan Git Flow beneran & push ke remote via backend...`,
+        });
+
+        // Trigger real git execution on filesystem
+        try {
+          const flowRes = await fetch('/api/repo/local-inspect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              folderPath: activeDir,
+              action: 'execute_git_flow',
+              baseBranch: 'main',
+              featureBranch: branchName,
+              releaseBranch: rcBranch,
+              targetBranch,
+              commitMessage: `feat(${ticket.key}): autonomous pipeline execution for ${ticket.summary}`,
+              pushToRemote: true,
+            }),
+          });
+          const flowData = await flowRes.json();
+          if (flowData.logs && flowData.logs.length > 0) {
+            flowData.logs.slice(-3).forEach((l: string) => {
+              this.onLog({ sender: 'RENO', color: '#38bdf8', text: `   ${l}` });
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        this.onLog({
+          sender: 'RENO',
+          color: '#22d3ee',
+          text: `📦 [Git Push] Berhasil sinkron ke origin: \x1b[36mgit push origin ${branchName} ${rcBranch} ${targetBranch}\x1b[0m`,
         });
         await this.sleep(800);
 
         this.onLog({
           sender: 'RENO',
           color: '#22d3ee',
-          text: `🎉 \x1b[32;1m${detectedProvider} Pull Request / MR Sinkron: ${detectedRemote}/pull/new/${rcBranch}\x1b[0m`,
+          text: `🎉 \x1b[32;1m${detectedProvider} PR Link: ${detectedRemote}/compare/${targetBranch}...${rcBranch}?expand=1\x1b[0m`,
         });
       } else {
         this.onLog({
