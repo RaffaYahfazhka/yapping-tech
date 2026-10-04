@@ -1,0 +1,213 @@
+import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+
+const DEFAULT_WORKSPACE = '/Users/raffayahfazhka/Downloads/master/yapping-techflow';
+const MASTER_DIR = '/Users/raffayahfazhka/Downloads/master';
+
+// Helper to safely execute git commands in a target directory
+function runGit(cmd, cwd) {
+  try {
+    return execSync(cmd, {
+      cwd,
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
+  } catch (err) {
+    return null;
+  }
+}
+
+// Inspect a specific folder path
+function inspectDirectory(targetPath) {
+  const resolved = path.resolve(targetPath);
+
+  if (!fs.existsSync(resolved)) {
+    return {
+      success: false,
+      path: resolved,
+      error: `Folder tidak ditemukan di path: ${resolved}`,
+      isValid: false,
+    };
+  }
+
+  const stat = fs.statSync(resolved);
+  if (!stat.isDirectory()) {
+    return {
+      success: false,
+      path: resolved,
+      error: `Path yang dipilih bukan direktori: ${resolved}`,
+      isValid: false,
+    };
+  }
+
+  // Check Git Status
+  const isGit = runGit('git rev-parse --is-inside-work-tree', resolved) === 'true';
+  let currentBranch = null;
+  let allBranches = [];
+  let isDevBranch = false;
+  let hasDevOrDevelopmentBranch = false;
+  let uncommittedFiles = 0;
+
+  if (isGit) {
+    currentBranch = runGit('git branch --show-current', resolved) || runGit('git rev-parse --abbrev-ref HEAD', resolved) || 'unknown';
+    
+    // Check if current active branch is dev or development
+    isDevBranch = currentBranch === 'dev' || currentBranch === 'development';
+
+    const branchListRaw = runGit('git branch --list', resolved) || '';
+    allBranches = branchListRaw
+      .split('\n')
+      .map((b) => b.replace(/^\*?\s+/, '').trim())
+      .filter(Boolean);
+
+    hasDevOrDevelopmentBranch = allBranches.some((b) => b === 'dev' || b === 'development');
+
+    const statusOutput = runGit('git status --porcelain', resolved) || '';
+    uncommittedFiles = statusOutput.split('\n').filter((l) => l.trim().length > 0).length;
+  }
+
+  // Check Package.json
+  let packageInfo = null;
+  let projectType = 'Generic Project';
+  const pkgPath = path.join(resolved, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkgContent = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      packageInfo = {
+        name: pkgContent.name || path.basename(resolved),
+        version: pkgContent.version || '0.1.0',
+        scripts: Object.keys(pkgContent.scripts || {}),
+      };
+      const deps = { ...(pkgContent.dependencies || {}), ...(pkgContent.devDependencies || {}) };
+      if (deps['next']) projectType = 'Next.js App';
+      else if (deps['react']) projectType = 'React App';
+      else if (deps['@nestjs/core']) projectType = 'NestJS Backend';
+      else if (deps['vue']) projectType = 'Vue.js App';
+      else projectType = 'Node.js Service';
+    } catch (e) {
+      // ignore json parse error
+    }
+  }
+
+  let branchStatus = 'valid';
+  let branchMessage = 'Branch aktif sesuai standar (dev / development). Siap eksekusi!';
+  if (!isGit) {
+    branchStatus = 'not_git';
+    branchMessage = 'Bukan repositori Git. Eksekusi lokal tetap dapat dijalankan.';
+  } else if (!isDevBranch) {
+    branchStatus = 'warning';
+    branchMessage = `Branch aktif: "${currentBranch}". Disarankan pindah ke branch "dev" atau "development" sebelum eksekusi Jira task.`;
+  }
+
+  return {
+    success: true,
+    path: resolved,
+    folderName: path.basename(resolved),
+    isValid: true,
+    isGitRepo: isGit,
+    currentBranch,
+    isDevBranch,
+    hasDevOrDevelopmentBranch,
+    allBranches,
+    uncommittedFiles,
+    projectType,
+    packageInfo,
+    branchStatus,
+    branchMessage,
+  };
+}
+
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const targetPath = searchParams.get('path');
+
+    if (targetPath) {
+      const inspection = inspectDirectory(targetPath);
+      return NextResponse.json(inspection);
+    }
+
+    // Default: scan available workspaces and master subdirectories
+    const availableProjects = [];
+
+    // Always include current workspace first
+    if (fs.existsSync(DEFAULT_WORKSPACE)) {
+      availableProjects.push({
+        path: DEFAULT_WORKSPACE,
+        name: path.basename(DEFAULT_WORKSPACE),
+        isDefault: true,
+        ...inspectDirectory(DEFAULT_WORKSPACE),
+      });
+    }
+
+    // Scan master directory for sibling projects
+    if (fs.existsSync(MASTER_DIR)) {
+      try {
+        const items = fs.readdirSync(MASTER_DIR, { withFileTypes: true });
+        for (const item of items) {
+          if (item.isDirectory() && !item.name.startsWith('.')) {
+            const itemPath = path.join(MASTER_DIR, item.name);
+            if (itemPath !== DEFAULT_WORKSPACE) {
+              availableProjects.push({
+                path: itemPath,
+                name: item.name,
+                isDefault: false,
+                ...inspectDirectory(itemPath),
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // ignore read error
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      defaultPath: DEFAULT_WORKSPACE,
+      availableProjects,
+    });
+  } catch (err) {
+    console.error('[local-inspect API Error]', err);
+    return NextResponse.json({ error: err.message, stack: err.stack }, { status: 500 });
+  }
+}
+
+
+// POST endpoint to checkout or create dev branch if user requests
+export async function POST(request) {
+  try {
+    const body = await request.json();
+    const { folderPath, action, targetBranch = 'dev' } = body;
+
+    const resolved = path.resolve(folderPath || DEFAULT_WORKSPACE);
+    if (!fs.existsSync(resolved)) {
+      return NextResponse.json({ error: 'Folder tidak ditemukan' }, { status: 404 });
+    }
+
+    if (action === 'checkout_dev') {
+      // Try checkout dev or create if not exists
+      try {
+        execSync(`git checkout ${targetBranch}`, { cwd: resolved, encoding: 'utf8' });
+      } catch (err) {
+        // If branch doesn't exist, create it from current HEAD
+        execSync(`git checkout -b ${targetBranch}`, { cwd: resolved, encoding: 'utf8' });
+      }
+
+      const updated = inspectDirectory(resolved);
+      return NextResponse.json({
+        success: true,
+        message: `Berhasil beralih ke branch "${targetBranch}"`,
+        ...updated,
+      });
+    }
+
+    const inspection = inspectDirectory(resolved);
+    return NextResponse.json(inspection);
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
