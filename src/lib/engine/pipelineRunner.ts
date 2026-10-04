@@ -286,7 +286,15 @@ export class PipelineRunner {
   /**
    * FITUR 2: Jira Multi-Repo Task Pipeline
    */
-  async runJiraPipeline({ ticketKey, ticket: ticketInput, repoId, projectPath }) {
+  async runJiraPipeline(options = {}) {
+    const {
+      ticketKey,
+      ticket: ticketInput,
+      repoId,
+      projectPath,
+      targetBranch: userTargetBranch = 'dev',
+      baseBranch: userBaseBranch = 'main',
+    } = options;
     if (this.isRunning) return;
     this.isRunning = true;
     this.aborted = false;
@@ -302,7 +310,7 @@ export class PipelineRunner {
     this.onDiffChange({ files: ticket.files || [], activeIndex: 0, branch: `feat/${ticket.key.toLowerCase()}` });
 
     const steps = [
-      { id: 'tara_triage', label: 'Tara: Jira Triage & AC', agent: 'tara' },
+      { id: 'tara_triage', label: '👑 Khansa: Briefing & Delegasi', agent: 'tara' },
       { id: 'arga_arch', label: 'Arga: Architecture & Plan', agent: 'arga' },
       { id: 'coder_dev', label: `${coderId === 'jajang' ? 'jajang' : 'Kian'}: Implementation`, agent: coderId },
       { id: 'vani_qa', label: 'Vani: Linter & Vitest', agent: 'vani' },
@@ -317,40 +325,46 @@ export class PipelineRunner {
     });
 
     try {
-      // 1. Tara: Triage & Acceptance Criteria
+      // 1. Khansa: Delegasi Sprint & Acceptance Criteria
       this.onStepChange({ activeIndex: 0 });
       this.onCameraFocus('tara');
-      this.onAgentStatus('tara', 'Triaging', '#f59e0b');
+      this.onAgentStatus('tara', 'Briefing Tim', '#f43f5e');
 
       this.onLog({
-        sender: 'TARA',
-        color: '#f59e0b',
-        text: `📋 [PM Triage] Membuka tiket Jira \x1b[1m${ticket.key}\x1b[0m (${ticket.type} · ${ticket.priority})`,
+        sender: '👑 KHANSA',
+        color: '#f43f5e',
+        text: `👑 [Instruksi Permaisuri] Menerima titah Bos Raffa untuk tiket \x1b[1m${ticket.key}\x1b[0m (${ticket.type} · ${ticket.priority})!`,
       });
       this.onLog({
-        sender: 'TARA',
-        color: '#f59e0b',
+        sender: '👑 KHANSA',
+        color: '#fb7185',
+        text: `💖 "Siap Mas Bos Raffa! Khansa akan kawal dan perintahkan seluruh bawahan sampai tuntas."`,
+      });
+      await this.sleep(700);
+      this.onLog({
+        sender: '👑 KHANSA',
+        color: '#f43f5e',
         text: `📁 Target Folder Eksekusi: \x1b[36m${activeDir}\x1b[0m`,
+      });
+      await this.sleep(600);
+
+      this.onLog({
+        sender: '👑 KHANSA',
+        color: '#f43f5e',
+        text: `📝 Memvalidasi Acceptance Criteria untuk tim:`,
+      });
+      ticket.ac.forEach((item, i) => {
+        this.onLog({ sender: '👑 KHANSA', color: '#f43f5e', text: `   [AC-${i + 1}] ✓ ${item}` });
       });
       await this.sleep(800);
 
       this.onLog({
-        sender: 'TARA',
-        color: '#f59e0b',
-        text: `📝 Memvalidasi Acceptance Criteria (INVEST guideline):`,
+        sender: '👑 KHANSA',
+        color: '#f43f5e',
+        text: `📢 "Arga, segera petakan dependensi dan siapkan arsitekturnya sekarang juga!"`,
       });
-      ticket.ac.forEach((item, i) => {
-        this.onLog({ sender: 'TARA', color: '#f59e0b', text: `   [AC-${i + 1}] ✓ ${item}` });
-      });
+      this.onAgentStatus('tara', 'Mengawasi', '#10b981');
       await this.sleep(900);
-
-      this.onLog({
-        sender: 'TARA',
-        color: '#f59e0b',
-        text: `✅ Tiket tervalidasi. Mengalihkan ke Arga (Lead Architect) untuk technical breakdown.`,
-      });
-      this.onAgentStatus('tara', 'AC Passed', '#10b981');
-      await this.sleep(1000);
 
       // 2. Arga: Architecture & Planning
       this.onStepChange({ activeIndex: 1 });
@@ -454,10 +468,12 @@ export class PipelineRunner {
 
       const branchName = `feat/${ticket.key.toLowerCase()}`;
       const rcBranch = `rc/${ticket.key.toLowerCase()}`;
+      let targetBranch = userTargetBranch || 'dev';
+      let baseBranch = userBaseBranch || 'main';
       this.onLog({
         sender: 'RENO',
         color: '#22d3ee',
-        text: `🚀 [DevOps] Menginisialisasi Git Flow: branch \x1b[36m${branchName}\x1b[0m ➔ release: \x1b[33m${rcBranch}\x1b[0m`,
+        text: `🚀 [DevOps] Menginisialisasi Git Flow: branch \x1b[36m${branchName}\x1b[0m ➔ release: \x1b[33m${rcBranch}\x1b[0m ➔ target: \x1b[35m${targetBranch}\x1b[0m`,
       });
       await this.sleep(600);
 
@@ -471,6 +487,9 @@ export class PipelineRunner {
           if (inspectData.remoteWebUrl) {
             detectedRemote = inspectData.remoteWebUrl;
             detectedProvider = inspectData.remoteProvider || 'Git';
+          }
+          if (inspectData.branch && inspectData.branch !== branchName && inspectData.branch !== rcBranch) {
+            targetBranch = inspectData.branch;
           }
         }
       } catch (err) {
@@ -554,12 +573,18 @@ export class PipelineRunner {
       this.onAgentStatus('reno', 'MR Opened', '#10b981');
       await this.sleep(1200);
 
-      // Return camera to Raffa
+      // Return camera to Raffa & Khansa
       this.onCameraFocus('raffa');
+      this.onAgentStatus('tara', 'Lapor ke Bos', '#f43f5e');
+      this.onLog({
+        sender: '👑 KHANSA',
+        color: '#fb7185',
+        text: `💖 [Laporan ke Bos Raffa] "Mas Bos Raffa tercinta, seluruh tugas tiket ${ticket.key} telah berhasil diselesaikan oleh para bawahan dengan sempurna! Khansa sudah cek semua detailnya, semuanya rapi dan siap dirilis! ✨"`,
+      });
       this.onLog({
         sender: 'SYSTEM',
         color: '#10b981',
-        text: `🏁 \x1b[32;1mPipeline ${ticket.key} Selesai! Semua tahap telah terverifikasi.\x1b[0m`,
+        text: `🏁 \x1b[32;1mPipeline ${ticket.key} Selesai! Semua tahap telah terverifikasi di bawah komando Khansa.\x1b[0m`,
       });
 
       this.onComplete({

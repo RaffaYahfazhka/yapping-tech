@@ -50,6 +50,16 @@ export class OfficeScene {
     this.walkCycle = 0;
     this.playerParts = {};
 
+    // Khansa Companion (Permaisuri & Corporate Secretary)
+    this.khansa = null;
+    this.khansaPos = new THREE.Vector3(BOSS.spawn.x + 1.25, 0, BOSS.spawn.z + 0.6);
+    this.khansaFacing = 0;
+    this.khansaTargetFacing = 0;
+    this.khansaIsMoving = false;
+    this.khansaWalkCycle = 0;
+    this.khansaParts = {};
+    this.khansaStatus = 'Mendampingi Bos';
+
     // Destination ring indicator
     this.destRing = null;
 
@@ -118,6 +128,9 @@ export class OfficeScene {
 
     // 8. Player: Raffa (The Boss)
     this.setupPlayer();
+
+    // 8b. Companion: Khansa (Permaisuri & Corporate Secretary)
+    this.setupKhansaCompanion();
 
     // 9. Destination Click Ring
     this.setupDestRing();
@@ -424,6 +437,65 @@ export class OfficeScene {
       chairGroup.add(wheelBase);
       group.add(chairGroup);
 
+      // For Khansa ('tara'): Khansa is an autonomous companion roaming with Boss Raffa!
+      // Her workstation acts as the Royal Executive Secretary Command Desk.
+      if (agent.id === 'tara') {
+        const signCanvas = document.createElement('canvas');
+        signCanvas.width = 384;
+        signCanvas.height = 80;
+        const sCtx = signCanvas.getContext('2d');
+        const grad = sCtx.createLinearGradient(0, 0, 384, 0);
+        grad.addColorStop(0, 'rgba(244, 63, 94, 0.95)');
+        grad.addColorStop(1, 'rgba(251, 191, 36, 0.95)');
+        sCtx.fillStyle = grad;
+        sCtx.beginPath();
+        sCtx.roundRect(8, 8, 368, 64, 14);
+        sCtx.fill();
+        sCtx.fillStyle = '#ffffff';
+        sCtx.font = 'bold 22px "Inter", sans-serif';
+        sCtx.textAlign = 'center';
+        sCtx.fillText('👑 KONSUL PERMAISURI KHANSA', 192, 48);
+
+        const signTex = new THREE.CanvasTexture(signCanvas);
+        const signSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTex, transparent: true }));
+        signSpr.scale.set(1.9, 0.42, 1);
+        signSpr.position.set(0, 1.35, 0.2);
+        group.add(signSpr);
+
+        // Floating 3D Canvas Status Badge
+        const badgeObj = this.createAgentBadge(agent);
+        badgeObj.sprite.position.set(0, 2.3, 0.3);
+        group.add(badgeObj.sprite);
+
+        // Click hit target for desk interaction
+        const hitBox = new THREE.Mesh(
+          new THREE.BoxGeometry(deskW + 1.4, 2.8, deskD + 1.8),
+          new THREE.MeshBasicMaterial({ visible: false })
+        );
+        hitBox.position.set(0, 1.2, 0.2);
+        hitBox.userData = { agentId: agent.id, deskPos: new THREE.Vector3(agent.desk.x, 0, agent.desk.z) };
+        group.add(hitBox);
+        this.interactiveMeshes.push(hitBox);
+
+        this.scene.add(group);
+
+        this.agentMeshes.set(agent.id, {
+          group,
+          avatar: null,
+          armL: null,
+          armR: null,
+          head: null,
+          badgeSprite: badgeObj.sprite,
+          canvas: badgeObj.canvas,
+          ctx: badgeObj.ctx,
+          texture: badgeObj.texture,
+          agent,
+          deskPos: new THREE.Vector3(agent.desk.x, 0, agent.desk.z),
+          status: 'Idle',
+        });
+        return;
+      }
+
       // AI Worker Avatar (Seated, typing)
       const avatarGroup = new THREE.Group();
       avatarGroup.position.set(0, 0.56, 0.58);
@@ -575,10 +647,14 @@ export class OfficeScene {
 
   updateAgentStatus(agentId, statusText, color) {
     const item = this.agentMeshes.get(agentId);
-    if (!item) return;
-    item.status = statusText;
-    this.renderBadgeCanvas(item.ctx, item.agent, statusText, color || item.agent.color);
-    item.texture.needsUpdate = true;
+    if (item) {
+      item.status = statusText;
+      this.renderBadgeCanvas(item.ctx, item.agent, statusText, color || item.agent.color);
+      item.texture.needsUpdate = true;
+    }
+    if (agentId === 'tara') {
+      this.updateKhansaBadge(statusText, color);
+    }
   }
 
   setupHolotable() {
@@ -727,6 +803,144 @@ export class OfficeScene {
     this.scene.add(group);
     this.player = group;
     this.playerParts = { torso, head, legL, legR, armL, armR, crown };
+  }
+
+  setupKhansaCompanion() {
+    // Khansa: Permaisuri & Corporate Secretary (Companion character following Raffa)
+    const group = new THREE.Group();
+    group.position.copy(this.khansaPos);
+
+    // Regal royal palette: Rose/Ruby gown with golden accents & brunette flowing hair
+    const skinMat = new THREE.MeshStandardMaterial({ color: '#f5cbb7', roughness: 0.6 });
+    const dressMat = new THREE.MeshStandardMaterial({ color: '#e11d48', roughness: 0.45, metalness: 0.15 });
+    const sashMat = new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.3, metalness: 0.75 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: '#271710', roughness: 0.9 });
+    const tiaraMat = new THREE.MeshStandardMaterial({ color: '#fbbf24', metalness: 0.95, roughness: 0.15 });
+    const shoeMat = new THREE.MeshStandardMaterial({ color: '#9f1239', roughness: 0.5 });
+
+    // Torso (Slim royal fitted gown)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.26), dressMat);
+    torso.position.y = 0.84;
+    torso.castShadow = true;
+    group.add(torso);
+
+    // Gold Royal Sash across chest
+    const sash = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.58, 0.28), sashMat);
+    sash.position.set(0.04, 0.84, 0.02);
+    sash.rotation.z = -0.32;
+    group.add(sash);
+
+    // Flared Gown Skirt
+    const skirtGeo = new THREE.CylinderGeometry(0.22, 0.38, 0.54, 8);
+    const skirt = new THREE.Mesh(skirtGeo, dressMat);
+    skirt.position.y = 0.38;
+    skirt.castShadow = true;
+    group.add(skirt);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.34, 0.28), skinMat);
+    head.position.y = 1.32;
+    head.castShadow = true;
+    group.add(head);
+
+    // Long Flowing Brunette Hair (Top + cascading back)
+    const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.32), hairMat);
+    hairTop.position.set(0, 1.48, -0.02);
+    group.add(hairTop);
+
+    const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.56, 0.12), hairMat);
+    hairBack.position.set(0, 1.15, -0.16);
+    hairBack.castShadow = true;
+    group.add(hairBack);
+
+    // Golden Royal Tiara / Crown of the First Lady
+    const tiara = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.09, 5), tiaraMat);
+    tiara.position.set(0, 1.58, 0.02);
+    group.add(tiara);
+
+    // Ruby gem sparkling on tiara
+    const gem = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 8),
+      new THREE.MeshStandardMaterial({ color: '#be123c', roughness: 0.1, metalness: 0.9 })
+    );
+    gem.position.set(0, 1.60, 0.12);
+    group.add(gem);
+
+    // Legs / Shoes under skirt (pivot from hips)
+    const legGeo = new THREE.BoxGeometry(0.13, 0.48, 0.14);
+    const legL = new THREE.Mesh(legGeo, shoeMat);
+    legL.position.set(-0.13, 0.24, 0);
+    legL.castShadow = true;
+    group.add(legL);
+
+    const legR = new THREE.Mesh(legGeo, shoeMat);
+    legR.position.set(0.13, 0.24, 0);
+    legR.castShadow = true;
+    group.add(legR);
+
+    // Left & Right Arms (graceful posture)
+    const armGeo = new THREE.BoxGeometry(0.10, 0.50, 0.11);
+    const armL = new THREE.Mesh(armGeo, dressMat);
+    armL.position.set(-0.29, 0.80, 0);
+    armL.castShadow = true;
+    group.add(armL);
+
+    const armR = new THREE.Mesh(armGeo, dressMat);
+    armR.position.set(0.29, 0.80, 0);
+    armR.castShadow = true;
+    group.add(armR);
+
+    // Floating Royal Nameplate & Dynamic Status
+    const tagCanvas = document.createElement('canvas');
+    tagCanvas.width = 384;
+    tagCanvas.height = 72;
+    const tagCtx = tagCanvas.getContext('2d');
+    const grad = tagCtx.createLinearGradient(0, 0, 384, 0);
+    grad.addColorStop(0, 'rgba(244, 63, 94, 0.95)');
+    grad.addColorStop(1, 'rgba(251, 191, 36, 0.95)');
+    tagCtx.fillStyle = grad;
+    tagCtx.beginPath();
+    tagCtx.roundRect(8, 8, 368, 56, 14);
+    tagCtx.fill();
+    tagCtx.fillStyle = '#ffffff';
+    tagCtx.font = 'bold 21px "Inter", sans-serif';
+    tagCtx.textAlign = 'center';
+    tagCtx.fillText('💖 KHANSA (PERMAISURI)', 192, 43);
+
+    const tagTex = new THREE.CanvasTexture(tagCanvas);
+    const tagSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTex, transparent: true }));
+    tagSprite.scale.set(1.9, 0.42, 1);
+    tagSprite.position.y = 2.15;
+    group.add(tagSprite);
+
+    // Click hitbox around Khansa (allows direct click on Khansa in 3D)
+    const hitBox = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 2.5, 1.4),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    hitBox.position.set(0, 1.0, 0);
+    hitBox.userData = { agentId: 'tara' };
+    group.add(hitBox);
+    this.interactiveMeshes.push(hitBox);
+
+    this.scene.add(group);
+    this.khansa = group;
+    this.khansaParts = {
+      torso,
+      skirt,
+      head,
+      hairBack,
+      tiara,
+      gem,
+      legL,
+      legR,
+      armL,
+      armR,
+      tagSprite,
+      tagCtx,
+      tagTex,
+      tagCanvas,
+    };
   }
 
   setupDestRing() {
@@ -893,6 +1107,10 @@ export class OfficeScene {
       this.focusingOnAgent = null;
       return;
     }
+    if (agentId === 'tara') {
+      this.focusingOnAgent = this.khansaPos;
+      return;
+    }
     const item = this.agentMeshes.get(agentId);
     if (item) {
       this.focusingOnAgent = item.deskPos;
@@ -916,6 +1134,9 @@ export class OfficeScene {
 
     // 1. Update Boss (WASD or Click-to-move)
     this.updatePlayerMovement(dt, elapsed);
+
+    // 1b. Update Khansa Companion (Follows Boss Raffa)
+    this.updateKhansa(dt, elapsed);
 
     // 2. Animate AI agents typing & idle bobbing
     this.updateAgents(dt, elapsed);
@@ -970,6 +1191,96 @@ export class OfficeScene {
     }
   }
 
+  updateKhansa(dt, elapsed) {
+    if (!this.khansa || !this.player) return;
+
+    // Khansa accompanies Boss Raffa: stays close by his side (right) and slightly behind
+    const offsetSide = 1.35;
+    const offsetBack = 0.65;
+    const cosF = Math.cos(this.playerFacing);
+    const sinF = Math.sin(this.playerFacing);
+
+    // Desired position relative to Raffa's current orientation
+    const targetX = this.playerPos.x + (cosF * offsetSide - sinF * offsetBack);
+    const targetZ = this.playerPos.z + (-sinF * offsetSide - cosF * offsetBack);
+
+    const dx = targetX - this.khansaPos.x;
+    const dz = targetZ - this.khansaPos.z;
+    const distToTarget = Math.hypot(dx, dz);
+    const distToRaffa = Math.hypot(this.playerPos.x - this.khansaPos.x, this.playerPos.z - this.khansaPos.z);
+
+    // If far away or catching up to Raffa
+    const needsToMove = distToTarget > 0.38 || distToRaffa > 1.85;
+
+    if (needsToMove) {
+      this.khansaIsMoving = true;
+      const moveDirX = dx / (distToTarget || 1);
+      const moveDirZ = dz / (distToTarget || 1);
+
+      // Dynamic catch-up speed
+      const catchup = distToRaffa > 3.0 ? 1.45 : distToTarget > 1.2 ? 1.2 : 1.0;
+      const spd = PLAYER.speed * catchup;
+
+      const nextX = this.khansaPos.x + moveDirX * spd * dt;
+      const nextZ = this.khansaPos.z + moveDirZ * spd * dt;
+
+      // Obstacle collision avoidance for Khansa
+      const resolved = resolveMovement(this.khansaPos.x, this.khansaPos.z, nextX, nextZ, 0.35);
+      this.khansaPos.x = resolved.x;
+      this.khansaPos.z = resolved.z;
+
+      this.khansaTargetFacing = facingFromDirection(moveDirX, moveDirZ);
+      this.khansaFacing = dampAngle(this.khansaFacing, this.khansaTargetFacing, 12, dt);
+
+      // Graceful royal walking animation
+      this.khansaWalkCycle += dt * 11;
+      const swing = Math.sin(this.khansaWalkCycle) * 0.4;
+      this.khansaParts.legL.rotation.x = swing;
+      this.khansaParts.legR.rotation.x = -swing;
+      this.khansaParts.armL.rotation.x = -swing * 0.7;
+      this.khansaParts.armR.rotation.x = swing * 0.7;
+      this.khansaParts.torso.position.y = 0.84 + Math.abs(Math.sin(this.khansaWalkCycle * 2)) * 0.035;
+      this.khansaParts.head.position.y = 1.32 + Math.abs(Math.sin(this.khansaWalkCycle * 2)) * 0.035;
+      this.khansaParts.skirt.rotation.z = Math.sin(this.khansaWalkCycle) * 0.05;
+    } else {
+      this.khansaIsMoving = false;
+      // When idle, face toward Raffa
+      const faceRaffa = Math.atan2(this.playerPos.x - this.khansaPos.x, this.playerPos.z - this.khansaPos.z);
+      this.khansaFacing = dampAngle(this.khansaFacing, faceRaffa, 6, dt);
+
+      this.khansaParts.legL.rotation.x *= 0.8;
+      this.khansaParts.legR.rotation.x *= 0.8;
+      this.khansaParts.armL.rotation.x *= 0.8;
+      this.khansaParts.armR.rotation.x *= 0.8;
+      this.khansaParts.torso.position.y = 0.84 + Math.sin(elapsed * 2.2) * 0.015;
+      this.khansaParts.head.position.y = 1.32 + Math.sin(elapsed * 2.2) * 0.015;
+      this.khansaParts.tiara.rotation.y = Math.sin(elapsed * 1.5) * 0.05;
+      this.khansaParts.tagSprite.position.y = 2.15 + Math.sin(elapsed * 2.5) * 0.05;
+    }
+
+    this.khansa.position.set(this.khansaPos.x, 0, this.khansaPos.z);
+    this.khansa.rotation.y = this.khansaFacing;
+  }
+
+  updateKhansaBadge(statusText, color) {
+    if (!this.khansaParts || !this.khansaParts.tagCtx) return;
+    const ctx = this.khansaParts.tagCtx;
+    const grad = ctx.createLinearGradient(0, 0, 384, 0);
+    grad.addColorStop(0, color || 'rgba(244, 63, 94, 0.95)');
+    grad.addColorStop(1, 'rgba(251, 191, 36, 0.95)');
+    ctx.clearRect(0, 0, 384, 72);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(8, 8, 368, 56, 14);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px "Inter", sans-serif';
+    ctx.textAlign = 'center';
+    const text = statusText && statusText !== 'Idle' ? `💖 KHANSA · ${statusText}` : '💖 KHANSA (PERMAISURI)';
+    ctx.fillText(text, 192, 43);
+    this.khansaParts.tagTex.needsUpdate = true;
+  }
+
   /**
    * Called by external keyboard handler for WASD input
    */
@@ -1006,6 +1317,7 @@ export class OfficeScene {
 
   updateAgents(dt, elapsed) {
     this.agentMeshes.forEach((item, id) => {
+      if (id === 'tara' || !item.armL) return;
       // Typing animation speed based on status
       const isWorking = item.status !== 'Idle';
       const speed = isWorking ? 14 : 4;
@@ -1085,21 +1397,35 @@ export class OfficeScene {
   }
 
   checkProximity() {
-    let nearestAgent = null;
-    let minDist = 4.5;
+    // Bos Raffa only interacts with Khansa (his First Lady & Corporate Secretary)!
+    const khansaAgent = AGENTS.find((a) => a.id === 'tara');
+    if (!khansaAgent) {
+      this.onInteractPrompt(null);
+      return;
+    }
+
+    // Check if Raffa is currently walking near a subordinate's desk
+    let nearestSubordinate = null;
+    let minDist = 3.8;
 
     this.agentMeshes.forEach((item) => {
+      if (item.agent.id === 'tara') return;
       const dist = this.playerPos.distanceTo(item.deskPos);
       if (dist < minDist) {
         minDist = dist;
-        nearestAgent = item.agent;
+        nearestSubordinate = item.agent;
       }
     });
 
-    if (nearestAgent) {
-      this.onInteractPrompt(nearestAgent);
+    if (nearestSubordinate) {
+      // Raffa instructs Khansa to command this specific subordinate!
+      this.onInteractPrompt({
+        ...khansaAgent,
+        commandTarget: nearestSubordinate,
+      });
     } else {
-      this.onInteractPrompt(null);
+      // Regular consultation with Khansa
+      this.onInteractPrompt(khansaAgent);
     }
   }
 

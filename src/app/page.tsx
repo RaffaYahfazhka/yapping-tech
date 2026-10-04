@@ -258,7 +258,8 @@ export default function OfficePage() {
         audio.toggleMute();
       } else if (e.code === 'KeyE' && !e.repeat) {
         const near = interactAgentRef.current;
-        openAgentWorkspaceRef.current?.(near ? near.id : 'tara');
+        const targetId = near?.commandTarget ? near.commandTarget.id : (near ? near.id : 'tara');
+        openAgentWorkspaceRef.current?.(targetId);
       } else if (e.code === 'Escape') {
         closeAllModals();
       }
@@ -512,14 +513,32 @@ export default function OfficePage() {
         <div
           id="interact-prompt"
           className="interact-prompt glass"
-          style={{ cursor: 'pointer' }}
-          onClick={() => openAgentWorkspace(interactAgent.id)}
+          style={{
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(244, 63, 94, 0.28), rgba(251, 191, 36, 0.18))',
+            borderColor: 'rgba(244, 63, 94, 0.55)',
+            boxShadow: '0 8px 32px rgba(244, 63, 94, 0.25)',
+          }}
+          onClick={() => {
+            const targetId = interactAgent?.commandTarget ? interactAgent.commandTarget.id : 'tara';
+            openAgentWorkspace(targetId);
+          }}
         >
-          <kbd className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-xs">E</kbd>
-          <span>
-            Bicara dengan <b>{interactAgent.name}</b> ({interactAgent.role}) —{' '}
-            <b className="text-emerald-400">Klik / Tekan [E]</b>
-          </span>
+          <kbd className="px-2 py-0.5 rounded bg-rose-500/30 text-rose-200 font-mono text-xs border border-rose-400/40">
+            E
+          </kbd>
+          {interactAgent.commandTarget ? (
+            <span>
+              👑 <b className="text-rose-300">Khansa:</b> &quot;Mau perintahkan{' '}
+              <b className="text-amber-300">{interactAgent.commandTarget.name}</b> ({interactAgent.commandTarget.role}), Mas Bos?&quot; —{' '}
+              <b className="text-rose-400">Tekan [E] / Klik</b>
+            </span>
+          ) : (
+            <span>
+              💖 Bicara dengan <b className="text-rose-300">Khansaku</b> (Permaisuri &amp; Corporate Secretary) —{' '}
+              <b className="text-rose-400">Tekan [E] / Klik</b>
+            </span>
+          )}
         </div>
       )}
 

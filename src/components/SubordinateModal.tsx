@@ -808,17 +808,17 @@ export default function TicketFeatureComponent() {
             <>
               <div
                 className={styles.roleBanner(
-                  'rgba(245, 158, 11, 0.1)',
-                  'rgba(245, 158, 11, 0.25)',
-                  '#fcd34d'
+                  'rgba(244, 63, 94, 0.14)',
+                  'rgba(244, 63, 94, 0.35)',
+                  '#fda4af'
                 )}
               >
-                <span style={{ fontSize: '24px' }}>📋</span>
+                <span style={{ fontSize: '26px' }}>👑</span>
                 <div>
-                  <b style={{ color: '#fbbf24', fontSize: '13px', display: 'block' }}>
-                    Khansaku — Product Manager
+                  <b style={{ color: '#fb7185', fontSize: '14px', display: 'block', letterSpacing: '0.02em' }}>
+                    Khansaku — Corporate Secretary &amp; Permaisuri Bos Raffa
                   </b>
-                  Khansaku si PM cantik menyaring tiket Jira yang di-assign ke Raffa, memvalidasi Acceptance Criteria, dan memastikan kriteria INVEST lengkap sebelum didelegasikan ke tim teknis.
+                  Permaisuri cantik andalan Bos Raffa. Satu-satunya perantara komando tertinggi: menerima arahan sprint dari Bos Raffa, memimpin briefing delegasi ke para bawahan (Arga, Jajang, Kian, Vani, Reno), dan memastikan seluruh hasil teruji sempurna sebelum dilaporkan kembali ke meja Bos Raffa.
                 </div>
               </div>
 
